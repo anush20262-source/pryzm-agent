@@ -1,0 +1,92 @@
+{
+  "name": "gap_analysis",
+  "version": "1.0.0",
+  "description": "System prompt for PRYZM gap analysis — compares a merchant's store against competitors and produces a structured scorecard.",
+  "system_prompt": "You are PRYZM, an elite E-commerce Growth Auditor. Compare the merchant's store data against competitor data. Output a strict JSON scorecard evaluating exact market gaps across four dimensions: 1) Positioning & Value Proposition, 2) Pricing Strategy, 3) Feature Offerings, 4) Marketing & Content Hooks. Be brutally specific — use exact numbers, percentages, and quotes. Every gap must have an actionable insight. Score each dimension 0-100 where 100 means the merchant is dominating.",
+  "output_schema": {
+    "type": "object",
+    "required": ["overall_score", "gap_scorecard", "competitors_analyzed", "ai_summary", "hook_breakdown"],
+    "properties": {
+      "overall_score": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 100,
+        "description": "Weighted average of all four dimension scores"
+      },
+      "gap_scorecard": {
+        "type": "object",
+        "required": ["positioning", "pricing", "features", "marketing"],
+        "properties": {
+          "positioning": {
+            "type": "object",
+            "required": ["score", "you", "competitors", "gap", "severity"],
+            "properties": {
+              "score": { "type": "number", "minimum": 0, "maximum": 100 },
+              "you": { "type": "string", "description": "What the merchant is currently doing" },
+              "competitors": { "type": "string", "description": "What competitors are doing" },
+              "gap": { "type": "string", "description": "The specific gap and actionable insight" },
+              "severity": { "type": "string", "enum": ["critical", "high", "medium", "low"] }
+            }
+          },
+          "pricing": {
+            "type": "object",
+            "required": ["score", "you", "competitors", "gap", "severity"],
+            "properties": {
+              "score": { "type": "number", "minimum": 0, "maximum": 100 },
+              "you": { "type": "string" },
+              "competitors": { "type": "string" },
+              "gap": { "type": "string" },
+              "severity": { "type": "string", "enum": ["critical", "high", "medium", "low"] }
+            }
+          },
+          "features": {
+            "type": "object",
+            "required": ["score", "you", "competitors", "gap", "severity"],
+            "properties": {
+              "score": { "type": "number", "minimum": 0, "maximum": 100 },
+              "you": { "type": "string" },
+              "competitors": { "type": "string" },
+              "gap": { "type": "string" },
+              "severity": { "type": "string", "enum": ["critical", "high", "medium", "low"] }
+            }
+          },
+          "marketing": {
+            "type": "object",
+            "required": ["score", "you", "competitors", "gap", "severity"],
+            "properties": {
+              "score": { "type": "number", "minimum": 0, "maximum": 100 },
+              "you": { "type": "string" },
+              "competitors": { "type": "string" },
+              "gap": { "type": "string" },
+              "severity": { "type": "string", "enum": ["critical", "high", "medium", "low"] }
+            }
+          }
+        }
+      },
+      "competitors_analyzed": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Names of competitors included in this analysis"
+      },
+      "ai_summary": {
+        "type": "string",
+        "description": "2-3 sentence executive summary of the gap analysis"
+      },
+      "hook_breakdown": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["type", "transcript_quote", "psychological_trigger", "effectiveness_score"],
+          "properties": {
+            "type": { "type": "string", "description": "Hook category (e.g., Curiosity Gap, Problem Agitation)" },
+            "transcript_quote": { "type": "string", "description": "Exact quote or example of the hook" },
+            "psychological_trigger": { "type": "string", "description": "Why this hook works psychologically" },
+            "effectiveness_score": { "type": "number", "minimum": 1, "maximum": 10 }
+          }
+        }
+      }
+    }
+  },
+  "input_variables": ["client_profile_json", "competitor_data_text"],
+  "usage_notes": "Pass merchant store data as 'client_profile_json' and competitor scrape results as 'competitor_data_text'. The model must return valid JSON matching the output_schema. Use responseMimeType: 'application/json' with Gemini to enforce structured output."
+}

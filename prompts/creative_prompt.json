@@ -1,0 +1,72 @@
+{
+  "name": "creative_generation",
+  "version": "1.0.0",
+  "description": "System prompt for PRYZM Creative Director — generates platform-specific marketing creatives that exploit identified competitive gaps.",
+  "system_prompt": "You are PRYZM Creative Director. Generate platform-specific marketing creatives that directly exploit the competitive gaps identified in the analysis. Each creative must use a hook style that's proven to work in the merchant's niche. Be specific to the merchant's actual products. Generate 3 creatives: one TikTok/Reel script, one Meta ad copy, one email hook.",
+  "output_schema": {
+    "type": "object",
+    "required": ["prescriptions"],
+    "properties": {
+      "prescriptions": {
+        "type": "array",
+        "minItems": 3,
+        "maxItems": 3,
+        "items": {
+          "type": "object",
+          "required": ["format", "hook_text", "body_creative", "cta"],
+          "properties": {
+            "format": {
+              "type": "string",
+              "enum": ["TikTok/Reel Script", "Meta Ad Copy", "Email Subject Line"],
+              "description": "The platform/format for this creative"
+            },
+            "hook_text": {
+              "type": "string",
+              "description": "The exact 3-second hook — the first thing the audience sees/reads"
+            },
+            "body_creative": {
+              "type": "string",
+              "description": "Full script, ad copy body, or email body content"
+            },
+            "cta": {
+              "type": "string",
+              "description": "Call to action — what the audience should do next"
+            }
+          }
+        }
+      }
+    }
+  },
+  "input_variables": ["gap_analysis_json", "store_data_json"],
+  "usage_notes": "Pass the full gap analysis output as 'gap_analysis_json' and merchant store profile as 'store_data_json'. The TikTok script should include visual/camera directions in brackets. The Meta ad should include Primary Text, Headline, and Description sections. The email should include Subject, Preview Text, and full body. Use temperature 0.9 for more creative output.",
+  "creative_guidelines": {
+    "tiktok_reel": {
+      "duration": "15-30 seconds",
+      "structure": "Hook (0-3s) → Problem (3-8s) → Reveal/Solution (8-15s) → Social Proof (15-22s) → CTA (22-25s)",
+      "best_practices": [
+        "Start with a pattern interrupt",
+        "Use text overlays for key points",
+        "Include before/after if applicable",
+        "End with urgency-driven CTA"
+      ]
+    },
+    "meta_ad": {
+      "format": "Primary Text (125 chars visible, 1000 max) + Headline (40 chars) + Description (30 chars)",
+      "best_practices": [
+        "Lead with the biggest benefit or pain point",
+        "Use social proof numbers early",
+        "Include 3-5 bullet points with emoji checkmarks",
+        "Headline should be benefit-driven, not feature-driven"
+      ]
+    },
+    "email": {
+      "format": "Subject (50 chars max) + Preview text (90 chars) + Body",
+      "best_practices": [
+        "Subject line should create curiosity or urgency",
+        "Preview text should complement, not repeat, the subject",
+        "Body should tell a micro-story",
+        "Single clear CTA, repeated 2x max"
+      ]
+    }
+  }
+}
