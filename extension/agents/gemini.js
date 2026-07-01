@@ -10,7 +10,7 @@
  *   - Model fallback chain
  */
 
-const GEMINI_MODELS = ['gemini-2.0-flash', 'gemini-2.0-flash-lite'];
+const GEMINI_MODELS = ['gemini-2.0-flash', 'gemini-1.5-flash-8b', 'gemini-1.5-pro'];
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
 /**
@@ -36,6 +36,10 @@ function sleep(ms) {
  */
 async function callGemini(apiKey, model, contents, tools, systemInstruction, attempt = 1) {
   const url = `${API_BASE}/models/${model}:generateContent?key=${apiKey}`;
+  
+  if (attempt === 1) {
+    console.log(`[Gemini] Calling API with key starting with: ${apiKey.substring(0, 8)}...`);
+  }
 
   const body = {
     contents,
