@@ -1,24 +1,26 @@
 /**
- * PRYZM Gemini Client
- * ====================
- * Calls Gemini API directly via REST — no npm packages, no backend.
- * Works in Chrome extension service worker (background.js).
+ * PRYZM Gemini Client (v3 — Hardened)
+ * =====================================
+ * Calls Gemini API directly via REST from Chrome extension service worker.
  * 
- * Handles:
- *   - Multi-turn conversations with tool calling
- *   - Retry with exponential backoff on 429 rate limits
- *   - Model fallback chain
+ * Fixes applied:
+ *   - API key sent via header (not URL query param)
+ *   - Proper Error objects (not plain objects)
+ *   - AbortController timeout on all API calls
+ *   - Shorter retry backoff (4s, 8s, 16s)
+ *   - No key logging
  */
 
-const GEMINI_MODELS = ['gemini-2.0-flash', 'gemini-1.5-flash-8b', 'gemini-1.5-pro'];
+const GEMINI_MODELS = ['gemini-2.0-flash', 'gemini-2.0-flash-lite'];
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
+const API_TIMEOUT_MS = 60000; // 60 second timeout per call
 
 /**
  * Get the stored Gemini API key from chrome.storage
  */
 async function getApiKey() {
   return new Promise((resolve) => {
-    chrome.storage.sync.get(['gemini_api_key'], (result) => {
+    chrome.storage.local.get(['gemini_api_key'], (result) => {
       resolve(result.gemini_api_key || '');
     });
   });
@@ -32,18 +34,14 @@ function sleep(ms) {
 }
 
 /**
- * Call Gemini API with retry logic
+ * Call Gemini API with retry logic and timeout
  */
 async function callGemini(apiKey, model, contents, tools, systemInstruction, attempt = 1) {
-  const url = `${API_BASE}/models/${model}:generateContent?key=${apiKey}`;
-  
-  if (attempt === 1) {
-    console.log(`[Gemini] Calling API with key starting with: ${apiKey.substring(0, 8)}...`);
-  }
+  const url = `${API_BASE}/models/${model}:generateContent`;
 
   const body = {
     contents,
-    generationConfig: { temperature: 0.7, maxOutputTokens: 4096 },
+    generationConfig: { temperature: 0.7, maxOutputTokens: 8192 },
   };
 
   if (systemInstruction) {
@@ -54,34 +52,110 @@ async function callGemini(apiKey, model, contents, tools, systemInstruction, att
     body.tools = [{ functionDeclarations: tools }];
   }
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  // Timeout via AbortController
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
 
-  if (response.status === 429) {
-    if (attempt <= 3) {
-      const waitSec = Math.pow(2, attempt) * 10;
-      console.log(`[Gemini] Rate limited. Waiting ${waitSec}s (attempt ${attempt}/3)...`);
-      await sleep(waitSec * 1000);
-      return callGemini(apiKey, model, contents, tools, systemInstruction, attempt + 1);
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+
+    if (response.status === 429) {
+      if (attempt <= 3) {
+        const waitSec = Math.pow(2, attempt) * 2; // 4s, 8s, 16s
+        console.log(`[Gemini] Rate limited. Waiting ${waitSec}s (attempt ${attempt}/3)...`);
+        await sleep(waitSec * 1000);
+        return callGemini(apiKey, model, contents, tools, systemInstruction, attempt + 1);
+      }
+      const err = new Error('Rate limit exceeded after 3 retries. Please wait a minute and try again.');
+      err.rateLimited = true;
+      throw err;
     }
-    throw { rateLimited: true, message: 'Rate limit exceeded after 3 retries' };
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Gemini API error (${response.status}): ${errText.substring(0, 300)}`);
+    }
+
+    return await response.json();
+  } catch (err) {
+    clearTimeout(timeout);
+    if (err.name === 'AbortError') {
+      throw new Error('Gemini API call timed out after 60 seconds. Please try again.');
+    }
+    throw err;
+  }
+}
+
+/**
+ * Call Gemini with Google Search Grounding (no function calling)
+ * Used by Scout agent to find competitors via web search.
+ */
+async function callGeminiWithSearch(apiKey, model, prompt, systemInstruction) {
+  const url = `${API_BASE}/models/${model}:generateContent`;
+
+  const body = {
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    tools: [{ google_search: {} }],
+    generationConfig: { temperature: 0.3, maxOutputTokens: 4096 },
+  };
+
+  if (systemInstruction) {
+    body.systemInstruction = { parts: [{ text: systemInstruction }] };
   }
 
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Gemini API error (${response.status}): ${errText.substring(0, 200)}`);
-  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
 
-  return await response.json();
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+
+    if (response.status === 429) {
+      // Single retry for search grounding
+      await sleep(5000);
+      const retry = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+        body: JSON.stringify(body),
+      });
+      if (!retry.ok) throw new Error('Search grounding rate limited. Try again later.');
+      return await retry.json();
+    }
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Search grounding error (${response.status}): ${errText.substring(0, 200)}`);
+    }
+
+    return await response.json();
+  } catch (err) {
+    clearTimeout(timeout);
+    if (err.name === 'AbortError') throw new Error('Search timed out after 60 seconds.');
+    throw err;
+  }
 }
 
 /**
  * runAgent — Executes an agent with tools in a multi-turn loop
- * 
- * Works entirely in the browser — no Node.js, no backend needed.
  * 
  * @param {Object} config
  * @param {string} config.name          - Agent name (for logging)
@@ -89,14 +163,14 @@ async function callGemini(apiKey, model, contents, tools, systemInstruction, att
  * @param {string} config.userPrompt    - The task for the agent
  * @param {Array}  config.tools         - Gemini function declarations
  * @param {Object} config.toolHandlers  - Map of tool_name → async function(args)
- * @param {number} config.maxTurns      - Max rounds (default: 8)
+ * @param {number} config.maxTurns      - Max rounds (default: 6)
  * @param {Function} config.onProgress  - Callback for progress updates
  * @returns {Object} Parsed JSON response
  */
-async function runAgent({ name, systemPrompt, userPrompt, tools, toolHandlers, maxTurns = 8, onProgress }) {
+async function runAgent({ name, systemPrompt, userPrompt, tools, toolHandlers, maxTurns = 6, onProgress }) {
   const apiKey = await getApiKey();
   if (!apiKey) {
-    throw new Error('No Gemini API key. Open PRYZM settings and enter your API key.');
+    throw new Error('No Gemini API key configured. Open PRYZM Settings and add your key.');
   }
 
   console.log(`🤖 [${name}] Starting...`);
@@ -108,7 +182,6 @@ async function runAgent({ name, systemPrompt, userPrompt, tools, toolHandlers, m
     console.log(`   [${name}] Using model: ${model}`);
 
     try {
-      // Build conversation history
       const contents = [{ role: 'user', parts: [{ text: userPrompt }] }];
       
       for (let turn = 1; turn <= maxTurns; turn++) {
@@ -121,8 +194,6 @@ async function runAgent({ name, systemPrompt, userPrompt, tools, toolHandlers, m
         if (!candidate) throw new Error('No response from Gemini');
 
         const parts = candidate.content?.parts || [];
-        
-        // Add model response to conversation history
         contents.push({ role: 'model', parts });
 
         // Check for function calls
@@ -163,12 +234,17 @@ async function runAgent({ name, systemPrompt, userPrompt, tools, toolHandlers, m
           });
         }
 
-        // Feed tool results back
         contents.push({ role: 'user', parts: toolResponseParts });
+
+        // Context window guard: if conversation is getting too long, summarize
+        if (contents.length > 12) {
+          console.log(`   [${name}] ⚠️ Long conversation (${contents.length} turns). Asking for final response.`);
+          contents.push({ role: 'user', parts: [{ text: 'You have enough data. Provide your final JSON response NOW.' }] });
+        }
       }
 
-      // Max turns — force final response
-      contents.push({ role: 'user', parts: [{ text: 'Provide your final JSON response NOW.' }] });
+      // Max turns reached — force final response
+      contents.push({ role: 'user', parts: [{ text: 'Provide your final JSON response NOW. No more tool calls.' }] });
       const final = await callGemini(apiKey, model, contents, null, systemPrompt);
       const text = final.candidates?.[0]?.content?.parts?.find(p => p.text)?.text || '';
       try {
@@ -180,14 +256,15 @@ async function runAgent({ name, systemPrompt, userPrompt, tools, toolHandlers, m
     } catch (err) {
       if (err.rateLimited && mi + 1 < GEMINI_MODELS.length) {
         console.log(`   [${name}] Model ${model} rate limited. Trying ${GEMINI_MODELS[mi + 1]}...`);
+        if (onProgress) onProgress({ agent: name, status: 'fallback', model: GEMINI_MODELS[mi + 1] });
         continue;
       }
       throw err;
     }
   }
 
-  throw new Error('All Gemini models exhausted. Please wait and try again later.');
+  throw new Error('All Gemini models exhausted. Please wait a few minutes and try again.');
 }
 
-// Export for use in background.js via importScripts
-self.GeminiAgent = { runAgent, getApiKey, callGemini };
+// Export for service worker
+self.GeminiAgent = { runAgent, getApiKey, callGemini, callGeminiWithSearch };

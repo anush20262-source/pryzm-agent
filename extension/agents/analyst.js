@@ -62,22 +62,26 @@ OUTPUT (JSON):
 
 RULES: Use ALL 4 tools. Use real data. Be brutally specific. Score honestly.`;
 
-async function runAnalystAgent(storeData, competitorData, onProgress) {
+async function runAnalystAgent(storeData, competitorData, onProgress, memory) {
   const competitors = competitorData.competitors || [];
+  const memoryContext = memory
+    ? `\n\nPREVIOUS ANALYSIS (compare with current):\n${memory}\nNote what has IMPROVED and what has WORSENED since last time.`
+    : '';
+
   const userPrompt = `Analyze gaps for "${storeData.store_name}":
 Products: ${JSON.stringify(storeData.products?.slice(0, 10))}
 Meta: "${storeData.niche_signals?.meta_description || ''}"
 
 COMPETITORS:
-${competitors.map((c, i) => `${i + 1}. ${c.name || c.title || 'Unknown'} (${c.url}): Products: ${JSON.stringify((c.products || []).slice(0, 5))}, Positioning: "${c.positioning || c.meta_description || ''}", Pricing: "${c.pricing_strategy || ''}", Content: "${(c.page_content_snippet || '').substring(0, 300)}"`).join('\n')}
-
+${competitors.map((c, i) => `${i + 1}. ${c.name || c.title || 'Unknown'} (${c.url}): Products: ${JSON.stringify((c.products || []).slice(0, 5))}, Positioning: "${c.positioning || c.meta_description || ''}", Pricing: "${c.pricing_strategy || ''}", Content: "${(c.page_content_snippet || c.content_strategy || '').substring(0, 300)}"`).join('\n')}
+${memoryContext}
 Use ALL 4 tools, then produce the gap scorecard.`;
 
   return await self.GeminiAgent.runAgent({
     name: 'Analyst', systemPrompt: ANALYST_SYSTEM, userPrompt,
     tools: ANALYST_TOOLS,
     toolHandlers: { compare_pricing: comparePricing, compare_positioning: comparePositioning, compare_features: compareFeatures, compare_marketing: compareMarketing },
-    maxTurns: 8, onProgress
+    maxTurns: 6, onProgress
   });
 }
 

@@ -93,7 +93,7 @@ function bindButtons() {
   on('btn-gen-creatives', 'click', generateCreatives);
   on('btn-back-gaps', 'click', () => switchView('radar'));
   on('btn-back-actions', 'click', () => switchView('radar'));
-  on('btn-regenerate', 'click', generateCreatives);
+  on('btn-regenerate', 'click', () => { state.creativesData = null; generateCreatives(); });
   on('btn-retry', 'click', startAnalysis);
   on('btn-settings', 'click', () => chrome.runtime.openOptionsPage());
   on('btn-setup-key', 'click', () => chrome.runtime.openOptionsPage());
@@ -241,7 +241,7 @@ function startAnalysis() {
   chrome.runtime.sendMessage({ type: 'ANALYZE_STORE', data: state.storeData }, (resp) => {
     clearInterval(interval);
     if (chrome.runtime.lastError || !resp || resp.error) {
-      const msg = resp?.message || resp?.error || 'Backend is not running. Start it with: cd backend-server && node server.js';
+      const msg = resp?.error || 'Analysis failed. Please check your API key in Settings and try again.';
       showError(msg);
       return;
     }
@@ -386,7 +386,7 @@ function generateCreatives() {
     data: { analysis: state.analysisData, store: state.storeData }
   }, (resp) => {
     if (chrome.runtime.lastError || !resp || resp.error) {
-      showError(resp?.message || 'Failed to generate creatives. Is the backend running?');
+      showError(resp?.error || 'Failed to generate creatives. Check your API key and try again.');
       return;
     }
     state.creativesData = resp.prescriptions || resp;
@@ -408,15 +408,23 @@ function populateActions(creatives) {
         <span class="badge badge-low">Ready</span>
       </div>
       <div class="creative-hook">"${esc(c.hook_text)}"</div>
-      <div class="creative-body">${esc(c.body_creative).replace(/\n/g, '<br>')}</div>
+      <div class="creative-body" style="white-space:pre-wrap;">${esc(c.body_creative)}</div>
       <div class="creative-cta">CTA: ${esc(c.cta)}</div>
       <textarea class="creative-edit-area" id="edit-${i}">${c.hook_text}\n\n${c.body_creative}\n\n${c.cta}</textarea>
       <div class="creative-actions">
-        <button class="btn-secondary btn-sm" id="copy-${i}" onclick="copyScript(${i})">📋 Copy</button>
-        <button class="btn-secondary btn-sm" onclick="toggleEdit(${i})">✏️ Edit</button>
+        <button class="btn-secondary btn-sm btn-copy" data-index="${i}">📋 Copy</button>
+        <button class="btn-secondary btn-sm btn-edit" data-index="${i}">✏️ Edit</button>
       </div>
     </div>
   `).join('');
+
+  // Attach event listeners (CSP-safe — no inline onclick)
+  container.querySelectorAll('.btn-copy').forEach(btn => {
+    btn.addEventListener('click', () => copyScript(parseInt(btn.dataset.index)));
+  });
+  container.querySelectorAll('.btn-edit').forEach(btn => {
+    btn.addEventListener('click', () => toggleEdit(parseInt(btn.dataset.index)));
+  });
 }
 
 // ============================================================

@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=360, initial-scale=1.0">
+  <title>PRYZM — Market Intelligence</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+
+  <!-- ===== HEADER ===== -->
+  <header class="sp-header">
+    <div class="sp-logo">
+      <span class="sp-logo-icon">◆</span>
+      <span class="sp-logo-text">PRYZM</span>
+      <span class="sp-logo-badge">AI</span>
+    </div>
+    <button class="sp-close-btn" id="closePanel" aria-label="Close panel">✕</button>
+  </header>
+
+  <!-- ===== TABS ===== -->
+  <nav class="sp-tabs" role="tablist">
+    <button class="sp-tab active" data-tab="dashboard" role="tab" aria-selected="true">
+      <span class="sp-tab-icon">◎</span> Dashboard
+    </button>
+    <button class="sp-tab" data-tab="chat" role="tab" aria-selected="false">
+      <span class="sp-tab-icon">◉</span> Chat
+    </button>
+    <button class="sp-tab" data-tab="creatives" role="tab" aria-selected="false">
+      <span class="sp-tab-icon">✦</span> Creatives
+    </button>
+    <button class="sp-tab" data-tab="settings" role="tab" aria-selected="false">
+      <span class="sp-tab-icon">⚙</span> Settings
+    </button>
+  </nav>
+
+  <!-- ===== TAB PANELS ===== -->
+
+  <!-- ——— DASHBOARD ——— -->
+  <section class="sp-panel active" id="panel-dashboard" role="tabpanel">
+    <div class="sp-scroll">
+
+      <!-- Loading State -->
+      <div class="sp-loading hidden" id="loadingState">
+        <div class="sp-loading-ring">
+          <svg viewBox="0 0 120 120" class="sp-ring-svg">
+            <circle cx="60" cy="60" r="52" class="sp-ring-track"></circle>
+            <circle cx="60" cy="60" r="52" class="sp-ring-progress"></circle>
+          </svg>
+          <span class="sp-loading-pct" id="loadingPct">0%</span>
+        </div>
+        <div class="sp-loading-phases">
+          <div class="sp-phase" id="phase-scout">
+            <span class="sp-phase-dot"></span> Scout — scanning store
+          </div>
+          <div class="sp-phase" id="phase-analyst">
+            <span class="sp-phase-dot"></span> Analyst — crunching data
+          </div>
+          <div class="sp-phase" id="phase-creative">
+            <span class="sp-phase-dot"></span> Creative — generating insights
+          </div>
+        </div>
+      </div>
+
+      <!-- Empty State -->
+      <div class="sp-empty" id="dashboardEmpty">
+        <div class="sp-empty-icon">◆</div>
+        <h3 class="sp-empty-title">Ready to Analyze</h3>
+        <p class="sp-empty-desc">Navigate to a Shopify or WooCommerce store and click <strong>Scan Page</strong> to begin.</p>
+        <div class="sp-empty-actions">
+          <button class="sp-btn sp-btn-primary" id="scanPageBtn">
+            <span class="sp-btn-icon">⊕</span> Scan Page
+          </button>
+        </div>
+      </div>
+
+      <!-- Inline Error -->
+      <div class="sp-inline-error hidden" id="dashboardError"></div>
+
+      <!-- X-Ray Section -->
+      <div class="sp-section hidden" id="xraySection">
+        <div class="sp-section-header">
+          <h3 class="sp-section-title">Store X-Ray</h3>
+          <button class="sp-btn sp-btn-sm" id="rescanBtn">↻ Rescan</button>
+        </div>
+        <div class="sp-card sp-xray-card">
+          <div class="sp-xray-header">
+            <span class="sp-store-name" id="storeName">—</span>
+            <span class="sp-platform-badge" id="platformBadge">—</span>
+          </div>
+          <div class="sp-xray-stats">
+            <div class="sp-stat">
+              <span class="sp-stat-label">Products</span>
+              <span class="sp-stat-value" id="productsCount">—</span>
+            </div>
+            <div class="sp-stat">
+              <span class="sp-stat-label">Price Range</span>
+              <span class="sp-stat-value" id="priceRange">—</span>
+            </div>
+          </div>
+          <div class="sp-xray-keywords" id="keywordsContainer"></div>
+        </div>
+      </div>
+
+      <!-- Threat Radar Section -->
+      <div class="sp-section hidden" id="radarSection">
+        <div class="sp-section-header">
+          <h3 class="sp-section-title">Threat Radar</h3>
+        </div>
+        <div class="sp-card sp-radar-card">
+          <div class="sp-radar-ring">
+            <svg viewBox="0 0 140 140" class="sp-score-svg">
+              <circle cx="70" cy="70" r="58" class="sp-score-track"></circle>
+              <circle cx="70" cy="70" r="58" class="sp-score-fill" id="scoreRing"></circle>
+            </svg>
+            <div class="sp-score-center">
+              <span class="sp-score-value" id="overallScore">—</span>
+              <span class="sp-score-label">Overall</span>
+            </div>
+          </div>
+          <div class="sp-radar-bars">
+            <div class="sp-bar-row">
+              <span class="sp-bar-label">Positioning</span>
+              <div class="sp-bar-track"><div class="sp-bar-fill" id="barPositioning"></div></div>
+              <span class="sp-bar-value" id="valPositioning">—</span>
+            </div>
+            <div class="sp-bar-row">
+              <span class="sp-bar-label">Pricing</span>
+              <div class="sp-bar-track"><div class="sp-bar-fill" id="barPricing"></div></div>
+              <span class="sp-bar-value" id="valPricing">—</span>
+            </div>
+            <div class="sp-bar-row">
+              <span class="sp-bar-label">Features</span>
+              <div class="sp-bar-track"><div class="sp-bar-fill" id="barFeatures"></div></div>
+              <span class="sp-bar-value" id="valFeatures">—</span>
+            </div>
+            <div class="sp-bar-row">
+              <span class="sp-bar-label">Marketing</span>
+              <div class="sp-bar-track"><div class="sp-bar-fill" id="barMarketing"></div></div>
+              <span class="sp-bar-value" id="valMarketing">—</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Gap Analysis Section -->
+      <div class="sp-section hidden" id="gapSection">
+        <div class="sp-section-header">
+          <h3 class="sp-section-title">Gap Analysis</h3>
+        </div>
+        <div class="sp-gap-list" id="gapList"></div>
+      </div>
+
+      <!-- Actions -->
+      <div class="sp-section hidden" id="actionsSection">
+        <div class="sp-action-row">
+          <button class="sp-btn sp-btn-primary sp-btn-full" id="analyzeBtn">
+            <span class="sp-btn-icon">◆</span> Analyze Market
+          </button>
+        </div>
+      </div>
+
+      <!-- History Section -->
+      <div class="sp-section" id="historySection">
+        <div class="sp-section-header">
+          <h3 class="sp-section-title">Analysis History</h3>
+          <button class="sp-btn sp-btn-sm sp-btn-ghost" id="clearHistoryBtn">Clear</button>
+        </div>
+        <div class="sp-history-list" id="historyList">
+          <div class="sp-empty-sm" id="historyEmpty">
+            <p>No past analyses yet.</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ——— CHAT ——— -->
+  <section class="sp-panel" id="panel-chat" role="tabpanel">
+    <div class="sp-chat-container">
+      <div class="sp-chat-messages" id="chatMessages">
+        <div class="sp-chat-welcome">
+          <div class="sp-chat-welcome-icon">◆</div>
+          <h3>PRYZM Intelligence</h3>
+          <p>Ask me anything about your store, competitors, or market strategy.</p>
+        </div>
+      </div>
+      <div class="sp-inline-error hidden" id="chatError"></div>
+      <div class="sp-chat-input-area">
+        <textarea class="sp-chat-input" id="chatInput" placeholder="Ask me anything about your store..." rows="1"></textarea>
+        <button class="sp-chat-send" id="chatSendBtn" aria-label="Send message">
+          <span class="sp-send-arrow">➤</span>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ——— CREATIVES ——— -->
+  <section class="sp-panel" id="panel-creatives" role="tabpanel">
+    <div class="sp-scroll">
+
+      <!-- Empty State -->
+      <div class="sp-empty" id="creativesEmpty">
+        <div class="sp-empty-icon">✦</div>
+        <h3 class="sp-empty-title">No Creatives Yet</h3>
+        <p class="sp-empty-desc">Run a store analysis first, then generate ad scripts for TikTok, Meta, and Email campaigns.</p>
+        <button class="sp-btn sp-btn-primary" id="genCreativesEmptyBtn">
+          <span class="sp-btn-icon">✦</span> Generate Creatives
+        </button>
+      </div>
+
+      <div class="sp-inline-error hidden" id="creativesError"></div>
+
+      <!-- Creatives List -->
+      <div class="sp-creatives-list hidden" id="creativesList">
+        <div class="sp-section-header">
+          <h3 class="sp-section-title">Ad Creatives</h3>
+          <button class="sp-btn sp-btn-sm" id="regenCreativesBtn">↻ Regenerate</button>
+        </div>
+
+        <!-- TikTok -->
+        <div class="sp-creative-card" id="creativeTiktok">
+          <div class="sp-creative-header">
+            <span class="sp-creative-platform sp-plat-tiktok">TikTok</span>
+            <div class="sp-creative-actions">
+              <button class="sp-icon-btn copy-btn" data-target="tiktokContent" aria-label="Copy">⎘</button>
+              <button class="sp-icon-btn edit-btn" data-target="tiktokContent" aria-label="Edit">✎</button>
+            </div>
+          </div>
+          <div class="sp-creative-body" id="tiktokContent"></div>
+          <textarea class="sp-creative-edit hidden" id="tiktokEdit"></textarea>
+        </div>
+
+        <!-- Meta -->
+        <div class="sp-creative-card" id="creativeMeta">
+          <div class="sp-creative-header">
+            <span class="sp-creative-platform sp-plat-meta">Meta</span>
+            <div class="sp-creative-actions">
+              <button class="sp-icon-btn copy-btn" data-target="metaContent" aria-label="Copy">⎘</button>
+              <button class="sp-icon-btn edit-btn" data-target="metaContent" aria-label="Edit">✎</button>
+            </div>
+          </div>
+          <div class="sp-creative-body" id="metaContent"></div>
+          <textarea class="sp-creative-edit hidden" id="metaEdit"></textarea>
+        </div>
+
+        <!-- Email -->
+        <div class="sp-creative-card" id="creativeEmail">
+          <div class="sp-creative-header">
+            <span class="sp-creative-platform sp-plat-email">Email</span>
+            <div class="sp-creative-actions">
+              <button class="sp-icon-btn copy-btn" data-target="emailContent" aria-label="Copy">⎘</button>
+              <button class="sp-icon-btn edit-btn" data-target="emailContent" aria-label="Edit">✎</button>
+            </div>
+          </div>
+          <div class="sp-creative-body" id="emailContent"></div>
+          <textarea class="sp-creative-edit hidden" id="emailEdit"></textarea>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ——— SETTINGS ——— -->
+  <section class="sp-panel" id="panel-settings" role="tabpanel">
+    <div class="sp-scroll">
+
+      <div class="sp-section">
+        <div class="sp-section-header">
+          <h3 class="sp-section-title">API Configuration</h3>
+        </div>
+        <div class="sp-card sp-settings-card">
+          <label class="sp-label" for="apiKeyInput">Gemini API Key</label>
+          <div class="sp-input-group">
+            <input type="password" class="sp-input" id="apiKeyInput" placeholder="Enter your API key…" autocomplete="off">
+            <button class="sp-icon-btn" id="toggleKeyVisibility" aria-label="Toggle visibility">👁</button>
+          </div>
+          <p class="sp-help-text">Your key is stored locally and never sent to third-party servers.</p>
+          <button class="sp-btn sp-btn-primary sp-btn-full" id="saveKeyBtn">Save API Key</button>
+          <div class="sp-status hidden" id="settingsStatus"></div>
+        </div>
+      </div>
+
+      <div class="sp-section">
+        <div class="sp-section-header">
+          <h3 class="sp-section-title">Data</h3>
+        </div>
+        <div class="sp-card">
+          <button class="sp-btn sp-btn-danger sp-btn-full" id="clearCacheBtn">Clear All Cached Data</button>
+        </div>
+      </div>
+
+      <div class="sp-section">
+        <div class="sp-version">PRYZM v1.0.0 — Market Intelligence Engine</div>
+      </div>
+
+    </div>
+  </section>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>
