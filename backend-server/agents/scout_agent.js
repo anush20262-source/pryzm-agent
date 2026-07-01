@@ -4,6 +4,11 @@
  * The FIRST agent in the pipeline. Given the merchant's store data,
  * it autonomously searches for competitors and scrapes their stores.
  * 
+ * Scraping strategy:
+ *   - If FIRECRAWL_API_KEY is set → use MCP server (spawned as child process)
+ *     which in turn uses Firecrawl or cheerio
+ *   - Otherwise → fall back to local cheerio scraping (no MCP)
+ * 
  * Tools:
  *   - search_competitors: Generates search queries and finds competitor URLs
  *   - scrape_store: Scrapes a competitor's store page for product/pricing data
@@ -13,6 +18,142 @@
 
 const { runAgent } = require('./agent_runner');
 const cheerio = require('cheerio');
+const path = require('path');
+const { spawn } = require('child_process');
+
+// ── MCP Client (lazy-initialized) ─────────────────────────────────────────
+let mcpClient = null;
+let mcpTransport = null;
+let mcpInitPromise = null;
+
+/**
+ * Get or create the MCP client connection.
+ * Spawns the MCP server as a child process and connects via stdio.
+ * Returns the client if successful, null if MCP is unavailable.
+ */
+async function getMcpClient() {
+  // If no Firecrawl key, don't bother with MCP
+  if (!process.env.FIRECRAWL_API_KEY) {
+    return null;
+  }
+
+  // If already connected, return existing client
+  if (mcpClient) return mcpClient;
+
+  // If initialization is in progress, wait for it
+  if (mcpInitPromise) return mcpInitPromise;
+
+  mcpInitPromise = (async () => {
+    try {
+      const { Client } = require('@modelcontextprotocol/sdk/client/index.js');
+      const { StdioClientTransport } = require('@modelcontextprotocol/sdk/client/stdio.js');
+
+      const mcpServerPath = path.resolve(__dirname, '../../mcp-server/index.js');
+
+      console.log('   [Scout] 🔌 Spawning MCP server...');
+
+      mcpTransport = new StdioClientTransport({
+        command: 'node',
+        args: [mcpServerPath],
+        env: {
+          ...process.env,
+          // Pass the Firecrawl key to the child process
+          FIRECRAWL_API_KEY: process.env.FIRECRAWL_API_KEY,
+        },
+      });
+
+      mcpClient = new Client({
+        name: 'pryzm-scout-agent',
+        version: '1.0.0',
+      });
+
+      await mcpClient.connect(mcpTransport);
+      console.log('   [Scout] ✅ MCP server connected');
+
+      // Verify the tool is available
+      const { tools } = await mcpClient.listTools();
+      const toolNames = tools.map(t => t.name);
+      console.log(`   [Scout] 🔧 MCP tools available: ${toolNames.join(', ')}`);
+
+      if (!toolNames.includes('scrape_competitor_data')) {
+        console.warn('   [Scout] ⚠️ scrape_competitor_data not found in MCP tools');
+        await closeMcpClient();
+        return null;
+      }
+
+      return mcpClient;
+    } catch (err) {
+      console.error(`   [Scout] ❌ MCP init failed: ${err.message}`);
+      mcpClient = null;
+      mcpTransport = null;
+      mcpInitPromise = null;
+      return null;
+    }
+  })();
+
+  return mcpInitPromise;
+}
+
+/**
+ * Cleanly shut down the MCP client and child process.
+ */
+async function closeMcpClient() {
+  if (mcpClient) {
+    try {
+      await mcpClient.close();
+    } catch (e) { /* ignore close errors */ }
+    mcpClient = null;
+  }
+  if (mcpTransport) {
+    try {
+      await mcpTransport.close();
+    } catch (e) { /* ignore close errors */ }
+    mcpTransport = null;
+  }
+  mcpInitPromise = null;
+}
+
+// ── Tool: Scrape via MCP server ───────────────────────────────────────────
+/**
+ * Call the MCP server's scrape_competitor_data tool.
+ * Returns parsed result or throws on failure.
+ */
+async function scrapeViaMcp(client, url, niche) {
+  console.log(`   [Scout] 🌐 Scraping via MCP: ${url}`);
+
+  const result = await client.callTool({
+    name: 'scrape_competitor_data',
+    arguments: {
+      domain: url,
+      niche: niche || '',
+    },
+  });
+
+  // MCP returns content as an array of content blocks
+  if (result.isError) {
+    const errorText = result.content?.[0]?.text || 'Unknown MCP error';
+    throw new Error(`MCP scrape error: ${errorText}`);
+  }
+
+  const text = result.content?.[0]?.text || '{}';
+  const parsed = JSON.parse(text);
+
+  // The MCP server returns { mode, competitor } — extract the competitor data
+  const competitor = parsed.competitor || parsed;
+  return {
+    url: competitor.url || url,
+    title: competitor.title || '',
+    meta_description: competitor.meta_description || '',
+    platform: competitor.platform || 'unknown',
+    products: competitor.products || [],
+    product_count: (competitor.products || []).length,
+    positioning: competitor.positioning || '',
+    content_strategy: competitor.content_strategy || '',
+    page_content_snippet: (competitor.page_content || '').substring(0, 1500),
+    scraped_at: competitor.scraped_at || new Date().toISOString(),
+    scrape_mode: parsed.mode || 'mcp',
+  };
+}
 
 // ── Tool: Search for competitors ──────────────────────────────────────────
 async function searchCompetitors({ niche, keywords }) {
@@ -63,9 +204,9 @@ async function searchCompetitors({ niche, keywords }) {
   };
 }
 
-// ── Tool: Scrape a store page ──────────────────────────────────────────────
-async function scrapeStore({ url }) {
-  console.log(`   [Scout] 🌐 Scraping store: ${url}`);
+// ── Tool: Scrape a store page (local cheerio fallback) ─────────────────────
+async function scrapeStoreCheerio({ url }) {
+  console.log(`   [Scout] 🌐 Scraping store (cheerio): ${url}`);
   
   try {
     const controller = new AbortController();
@@ -148,7 +289,8 @@ async function scrapeStore({ url }) {
       products: products.slice(0, 10),
       product_count: products.length,
       page_content_snippet: pageText.substring(0, 1500),
-      scraped_at: new Date().toISOString()
+      scraped_at: new Date().toISOString(),
+      scrape_mode: 'cheerio-local',
     };
   } catch (err) {
     return {
@@ -158,6 +300,27 @@ async function scrapeStore({ url }) {
       page_content_snippet: `Failed to scrape: ${err.message}`
     };
   }
+}
+
+// ── Unified scrape_store handler (MCP → cheerio fallback) ──────────────────
+/**
+ * The scrape_store tool handler registered with the agent runner.
+ * Tries MCP first (if Firecrawl key is set), falls back to cheerio.
+ */
+async function scrapeStore({ url }) {
+  // Try MCP scraping first
+  const client = await getMcpClient();
+  if (client) {
+    try {
+      return await scrapeViaMcp(client, url);
+    } catch (err) {
+      console.warn(`   [Scout] ⚠️ MCP scrape failed, falling back to cheerio: ${err.message}`);
+      // Fall through to cheerio
+    }
+  }
+
+  // Cheerio fallback
+  return scrapeStoreCheerio({ url });
 }
 
 // ── Scout Agent Definition ──────────────────────────────────────────────────
@@ -226,6 +389,9 @@ RULES:
 async function runScoutAgent(storeData) {
   const niche = storeData.niche_signals?.keywords?.join(', ') || storeData.store_name || 'e-commerce';
   
+  const hasMcp = !!process.env.FIRECRAWL_API_KEY;
+  console.log(`   [Scout] Scraping mode: ${hasMcp ? 'MCP (Firecrawl/cheerio)' : 'local cheerio'}`);
+
   const userPrompt = `Analyze this merchant's store and find their top competitors:
 
 MERCHANT STORE:
@@ -237,17 +403,24 @@ MERCHANT STORE:
 
 Find 3 direct competitors in the "${niche}" space. Search for them, then scrape their stores to get real product and pricing data.`;
 
-  return await runAgent({
-    name: 'Scout',
-    systemPrompt: SCOUT_SYSTEM_PROMPT,
-    userPrompt,
-    tools: SCOUT_TOOLS,
-    toolHandlers: {
-      search_competitors: searchCompetitors,
-      scrape_store: scrapeStore,
-    },
-    maxTurns: 10, // Scout needs more turns (search + multiple scrapes)
-  });
+  try {
+    const result = await runAgent({
+      name: 'Scout',
+      systemPrompt: SCOUT_SYSTEM_PROMPT,
+      userPrompt,
+      tools: SCOUT_TOOLS,
+      toolHandlers: {
+        search_competitors: searchCompetitors,
+        scrape_store: scrapeStore,
+      },
+      maxTurns: 10, // Scout needs more turns (search + multiple scrapes)
+    });
+
+    return result;
+  } finally {
+    // Always clean up MCP connection when the agent run finishes
+    await closeMcpClient();
+  }
 }
 
 module.exports = { runScoutAgent, scrapeStore };

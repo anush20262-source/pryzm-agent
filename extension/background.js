@@ -1,206 +1,224 @@
 /**
- * PRYZM Background Service Worker
- *
- * Bridges popup.js ↔ backend server.js.
- * Caches store data and analysis results in chrome.storage.local
- * so they persist between popup opens.
- *
- * Message types handled:
- *   GET_CACHED_DATA        (from popup)     → returns cached store/analysis data
- *   STORE_DATA_EXTRACTED   (from content)   → caches store data
- *   ANALYZE_STORE          (from popup)     → POST /api/analyze, returns backend JSON
- *   GENERATE_CREATIVES     (from popup)     → POST /api/generate-creative, returns backend JSON
- *
- * No demo data. No fallbacks. If the backend is down, return { error }.
+ * PRYZM Background Service Worker (v3 — Self-Contained)
+ * ======================================================
+ * Runs the entire agent pipeline inside the extension.
+ * NO backend server needed. Calls Gemini API directly.
+ * 
+ * Richard installs the extension → enters his API key → clicks Analyze → done.
  */
 
-const API_BASE = 'http://localhost:3000';
+// Load agent modules
+importScripts('agents/gemini.js', 'agents/scout.js', 'agents/analyst.js', 'agents/creative.js');
 
-// ─── Badge Helpers ────────────────────────────────────────────────
-function setBadgeIdle() {
-  chrome.action.setBadgeText({ text: '' });
-}
+// ── State ─────────────────────────────────────────────────────────────
+let cachedStoreData = null;
+let cachedAnalysis = null;
+let cachedCreatives = null;
+let pipelineRunning = false;
 
-function setBadgeScanning() {
-  chrome.action.setBadgeBackgroundColor({ color: '#FFD93D' });
-  chrome.action.setBadgeText({ text: '...' });
-}
+// ── Message Handler ───────────────────────────────────────────────────
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  const { type, data } = message;
 
-function setBadgeGaps(count) {
-  chrome.action.setBadgeBackgroundColor({ color: '#FF3B3B' });
-  chrome.action.setBadgeText({ text: String(count) });
-}
+  switch (type) {
+    case 'STORE_DATA_EXTRACTED':
+      // Content script detected a store — cache it
+      cachedStoreData = data;
+      chrome.storage.local.set({ storeData: data });
+      console.log('[BG] Store data cached:', data.store_name);
+      break;
 
-function setBadgeGood() {
-  chrome.action.setBadgeBackgroundColor({ color: '#00FF88' });
-  chrome.action.setBadgeText({ text: '✓' });
-}
-
-// ─── API Call ─────────────────────────────────────────────────────
-// Returns the parsed JSON on success, or throws on failure.
-async function apiPost(endpoint, payload) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
-
-  try {
-    const res = await fetch(`${API_BASE}${endpoint}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      throw new Error(body.message || body.error || `API ${res.status}: ${res.statusText}`);
-    }
-
-    return await res.json();
-  } catch (err) {
-    clearTimeout(timeout);
-    if (err.name === 'AbortError') {
-      throw new Error('Request timed out — is the backend running?');
-    }
-    // Network errors (backend not running) come through as TypeError
-    if (err instanceof TypeError && err.message.includes('fetch')) {
-      throw new Error('Backend not running. Start it with: cd backend-server && node server.js');
-    }
-    throw err;
-  }
-}
-
-// ─── Message Router ───────────────────────────────────────────────
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  const { type } = message;
-
-  // ────────────────────────────────────────────────────────────────
-  // STORE_DATA_EXTRACTED  (content.js → background)
-  // Cache the raw store data so the popup can retrieve it later.
-  // ────────────────────────────────────────────────────────────────
-  if (type === 'STORE_DATA_EXTRACTED') {
-    chrome.storage.local.set({
-      storeData: message.data,
-      storeDataTimestamp: Date.now(),
-    });
-    setBadgeIdle();
-    return; // synchronous, no sendResponse needed
-  }
-
-  // ────────────────────────────────────────────────────────────────
-  // GET_CACHED_DATA  (popup → background)
-  // Return whatever we have cached (storeData, analysisData).
-  // popup.js reads: resp.storeData, resp.analysisData
-  // ────────────────────────────────────────────────────────────────
-  if (type === 'GET_CACHED_DATA') {
-    chrome.storage.local.get(
-      ['storeData', 'analysisData', 'storeDataTimestamp'],
-      (result) => {
+    case 'GET_CACHED_DATA':
+      // Popup opened — return whatever we have
+      chrome.storage.local.get(['storeData', 'analysisData', 'creativesData'], (result) => {
         sendResponse({
-          storeData: result.storeData || null,
-          analysisData: result.analysisData || null,
-          timestamp: result.storeDataTimestamp || null,
+          storeData: cachedStoreData || result.storeData || null,
+          analysisData: cachedAnalysis || result.analysisData || null,
+          creativesData: cachedCreatives || result.creativesData || null,
         });
+      });
+      return true; // async
+
+    case 'CHECK_API_KEY':
+      // Check if API key is configured
+      self.GeminiAgent.getApiKey().then(key => {
+        sendResponse({ hasKey: !!key, keyPreview: key ? key.substring(0, 8) + '...' : '' });
+      });
+      return true;
+
+    case 'SAVE_API_KEY':
+      // User entered their API key in settings
+      chrome.storage.sync.set({ gemini_api_key: data.key }, () => {
+        console.log('[BG] API key saved');
+        sendResponse({ success: true });
+      });
+      return true;
+
+    case 'ANALYZE_STORE':
+      // Run the full agent pipeline: Scout → Analyst
+      if (pipelineRunning) {
+        sendResponse({ error: 'Analysis is already running. Please wait.' });
+        return true;
       }
-    );
-    return true; // keep channel open for async sendResponse
-  }
+      runAnalysisPipeline(data, sendResponse);
+      return true; // async
 
-  // ────────────────────────────────────────────────────────────────
-  // ANALYZE_STORE  (popup → background)
-  //
-  // popup sends:   { type: 'ANALYZE_STORE', data: storeData }
-  // backend POST /api/analyze expects: storeData as body
-  // backend returns: { success, gap_analysis, scout_data, store }
-  //
-  // popup reads:   resp.gap_analysis, resp.creatives, resp.error, resp.message
-  // So we forward the backend's JSON directly to the popup.
-  // ────────────────────────────────────────────────────────────────
-  if (type === 'ANALYZE_STORE') {
-    (async () => {
-      try {
-        setBadgeScanning();
+    case 'GENERATE_CREATIVES':
+      // Run Creative Director agent
+      runCreativePipeline(data, sendResponse);
+      return true;
 
-        const storeData = message.data;
-        if (!storeData) {
-          sendResponse({ error: 'No store data provided.' });
-          setBadgeIdle();
-          return;
-        }
-
-        // Call the real backend
-        const result = await apiPost('/api/analyze', storeData);
-        // result shape: { success, gap_analysis, scout_data, store }
-
-        // Cache successful analysis for persistence between popup opens
-        await chrome.storage.local.set({
-          storeData: storeData,
-          storeDataTimestamp: Date.now(),
-          analysisData: result.gap_analysis || null,
-          analysisTimestamp: Date.now(),
-        });
-
-        // Update badge based on gap severity
-        const gaps = result.gap_analysis?.gap_scorecard || {};
-        const criticalCount = Object.values(gaps).filter(
-          (g) => g.severity === 'critical'
-        ).length;
-        if (criticalCount > 0) {
-          setBadgeGaps(criticalCount);
-        } else {
-          setBadgeGood();
-        }
-
-        // Return backend JSON directly — popup reads resp.gap_analysis
-        sendResponse(result);
-      } catch (err) {
-        setBadgeIdle();
-        sendResponse({ error: err.message });
+    case 'FULL_PIPELINE':
+      // Run everything: Scout → Analyst → Creative
+      if (pipelineRunning) {
+        sendResponse({ error: 'Pipeline is already running. Please wait.' });
+        return true;
       }
-    })();
-    return true; // keep channel open for async sendResponse
-  }
+      runFullPipeline(data, sendResponse);
+      return true;
 
-  // ────────────────────────────────────────────────────────────────
-  // GENERATE_CREATIVES  (popup → background)
-  //
-  // popup sends:   { type: 'GENERATE_CREATIVES', data: { analysis, store } }
-  // backend POST /api/generate-creative expects: { analysis, store }
-  // backend returns: { success, prescriptions }
-  //
-  // popup reads:   resp.prescriptions, resp.error, resp.message
-  // So we forward the backend's JSON directly to the popup.
-  // ────────────────────────────────────────────────────────────────
-  if (type === 'GENERATE_CREATIVES') {
-    (async () => {
-      try {
-        const payload = message.data;
-        if (!payload || !payload.analysis) {
-          sendResponse({ error: 'No analysis data. Run analysis first.' });
-          return;
-        }
+    case 'GET_PIPELINE_STATUS':
+      sendResponse({ running: pipelineRunning });
+      return true;
 
-        // Call the real backend
-        const result = await apiPost('/api/generate-creative', payload);
-        // result shape: { success, prescriptions }
-
-        // Cache creatives
-        await chrome.storage.local.set({
-          creativesData: result.prescriptions || null,
-        });
-
-        // Return backend JSON directly — popup reads resp.prescriptions
-        sendResponse(result);
-      } catch (err) {
-        sendResponse({ error: err.message });
-      }
-    })();
-    return true; // keep channel open for async sendResponse
+    case 'CLEAR_CACHE':
+      cachedStoreData = null;
+      cachedAnalysis = null;
+      cachedCreatives = null;
+      chrome.storage.local.remove(['storeData', 'analysisData', 'creativesData']);
+      sendResponse({ success: true });
+      return true;
   }
 });
 
-// ─── Extension Install / Startup ──────────────────────────────────
-chrome.runtime.onInstalled.addListener(() => {
-  setBadgeIdle();
-  console.log('[PRYZM] Extension installed — ready for competitive intelligence.');
+// ── Analysis Pipeline (Scout → Analyst) ─────────────────────────────
+async function runAnalysisPipeline(storeData, sendResponse) {
+  pipelineRunning = true;
+  try {
+    // Check API key first
+    const apiKey = await self.GeminiAgent.getApiKey();
+    if (!apiKey) {
+      sendResponse({ error: 'No API key configured. Click the ⚙️ icon to add your Gemini API key.' });
+      pipelineRunning = false;
+      return;
+    }
+
+    console.log(`[BG] 📡 Scout Agent starting for "${storeData.store_name}"...`);
+    
+    // Agent 1: Scout
+    const scoutResult = await self.ScoutAgent.runScoutAgent(storeData, (progress) => {
+      broadcastProgress(progress);
+    });
+    console.log(`[BG] Scout found ${scoutResult.competitors?.length || 0} competitors`);
+
+    // Agent 2: Analyst
+    console.log('[BG] 📊 Analyst Agent starting...');
+    const analysisResult = await self.AnalystAgent.runAnalystAgent(storeData, scoutResult, (progress) => {
+      broadcastProgress(progress);
+    });
+    console.log(`[BG] Analysis complete. Score: ${analysisResult.overall_score}/100`);
+
+    // Cache results
+    cachedAnalysis = analysisResult;
+    cachedStoreData = storeData;
+    chrome.storage.local.set({ analysisData: analysisResult, storeData });
+
+    sendResponse({
+      success: true,
+      gap_analysis: analysisResult,
+      scout_data: { competitors_found: scoutResult.competitors?.length || 0, niche_summary: scoutResult.niche_summary }
+    });
+
+  } catch (err) {
+    console.error('[BG] Pipeline failed:', err.message);
+    sendResponse({ error: err.message });
+  } finally {
+    pipelineRunning = false;
+  }
+}
+
+// ── Creative Pipeline ───────────────────────────────────────────────
+async function runCreativePipeline(data, sendResponse) {
+  try {
+    const apiKey = await self.GeminiAgent.getApiKey();
+    if (!apiKey) {
+      sendResponse({ error: 'No API key. Add it in ⚙️ Settings.' });
+      return;
+    }
+
+    const analysis = data.analysis || cachedAnalysis;
+    const store = data.store || cachedStoreData;
+    if (!analysis) {
+      sendResponse({ error: 'Run analysis first.' });
+      return;
+    }
+
+    console.log('[BG] 🎨 Creative Director starting...');
+    const creativeResult = await self.CreativeAgent.runCreativeAgent(analysis, store || {}, (progress) => {
+      broadcastProgress(progress);
+    });
+
+    cachedCreatives = creativeResult.prescriptions || creativeResult;
+    chrome.storage.local.set({ creativesData: cachedCreatives });
+
+    sendResponse({ success: true, prescriptions: cachedCreatives });
+
+  } catch (err) {
+    console.error('[BG] Creative failed:', err.message);
+    sendResponse({ error: err.message });
+  }
+}
+
+// ── Full Pipeline (Scout → Analyst → Creative) ─────────────────────
+async function runFullPipeline(storeData, sendResponse) {
+  pipelineRunning = true;
+  try {
+    const apiKey = await self.GeminiAgent.getApiKey();
+    if (!apiKey) {
+      sendResponse({ error: 'No API key. Add it in ⚙️ Settings.' });
+      pipelineRunning = false;
+      return;
+    }
+
+    // Scout
+    const scoutResult = await self.ScoutAgent.runScoutAgent(storeData, broadcastProgress);
+    // Analyst
+    const analysisResult = await self.AnalystAgent.runAnalystAgent(storeData, scoutResult, broadcastProgress);
+    // Creative
+    const creativeResult = await self.CreativeAgent.runCreativeAgent(analysisResult, storeData, broadcastProgress);
+
+    cachedStoreData = storeData;
+    cachedAnalysis = analysisResult;
+    cachedCreatives = creativeResult.prescriptions || creativeResult;
+    chrome.storage.local.set({ storeData, analysisData: cachedAnalysis, creativesData: cachedCreatives });
+
+    sendResponse({
+      success: true,
+      gap_analysis: analysisResult,
+      creatives: cachedCreatives,
+      scout_summary: scoutResult.niche_summary
+    });
+
+  } catch (err) {
+    console.error('[BG] Full pipeline failed:', err.message);
+    sendResponse({ error: err.message });
+  } finally {
+    pipelineRunning = false;
+  }
+}
+
+// ── Progress Broadcasting ──────────────────────────────────────────
+function broadcastProgress(progress) {
+  // Send progress to popup if open
+  chrome.runtime.sendMessage({ type: 'AGENT_PROGRESS', data: progress }).catch(() => {});
+}
+
+// ── Extension Installed ─────────────────────────────────────────────
+chrome.runtime.onInstalled.addListener((details) => {
+  if (details.reason === 'install') {
+    // Open settings page on first install so Richard can enter his API key
+    chrome.tabs.create({ url: chrome.runtime.getURL('settings.html') });
+  }
 });
+
+console.log('🔮 PRYZM Background — Self-contained agent pipeline loaded');

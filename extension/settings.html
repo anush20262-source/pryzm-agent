@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PRYZM — Setup</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0a0a0f;
+      color: #e0e0e8;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .container {
+      max-width: 540px;
+      padding: 48px;
+      background: linear-gradient(145deg, #12121a 0%, #1a1a28 100%);
+      border: 1px solid rgba(139, 92, 246, 0.2);
+      border-radius: 24px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(139, 92, 246, 0.08);
+    }
+    .logo {
+      font-size: 40px;
+      text-align: center;
+      margin-bottom: 8px;
+    }
+    h1 {
+      font-size: 28px;
+      text-align: center;
+      background: linear-gradient(135deg, #a78bfa, #6366f1);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      text-align: center;
+      color: #8888a0;
+      font-size: 14px;
+      margin-bottom: 32px;
+    }
+    .step { margin-bottom: 24px; }
+    .step-number {
+      display: inline-flex;
+      width: 28px; height: 28px;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #8b5cf6, #6366f1);
+      color: white;
+      border-radius: 50%;
+      font-size: 14px;
+      font-weight: 700;
+      margin-right: 8px;
+    }
+    .step-title {
+      font-weight: 600;
+      font-size: 16px;
+      margin-bottom: 8px;
+    }
+    .step-desc {
+      color: #9999b0;
+      font-size: 13px;
+      margin-bottom: 12px;
+      line-height: 1.5;
+    }
+    .step-desc a {
+      color: #a78bfa;
+      text-decoration: none;
+    }
+    .step-desc a:hover { text-decoration: underline; }
+    .input-group {
+      display: flex;
+      gap: 8px;
+    }
+    input[type="password"], input[type="text"] {
+      flex: 1;
+      padding: 12px 16px;
+      background: #0d0d15;
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      border-radius: 12px;
+      color: #e0e0e8;
+      font-size: 14px;
+      font-family: 'Courier New', monospace;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input:focus { border-color: #8b5cf6; }
+    .btn-save {
+      padding: 12px 24px;
+      background: linear-gradient(135deg, #8b5cf6, #6366f1);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .btn-save:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 20px rgba(139, 92, 246, 0.4);
+    }
+    .btn-save:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .status {
+      margin-top: 12px;
+      padding: 12px 16px;
+      border-radius: 12px;
+      font-size: 13px;
+      display: none;
+    }
+    .status.success {
+      display: block;
+      background: rgba(34, 197, 94, 0.1);
+      border: 1px solid rgba(34, 197, 94, 0.3);
+      color: #22c55e;
+    }
+    .status.error {
+      display: block;
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #ef4444;
+    }
+    .features {
+      margin-top: 32px;
+      padding-top: 24px;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .features h3 {
+      font-size: 14px;
+      color: #8888a0;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 16px;
+    }
+    .feature-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .feature-icon { font-size: 20px; flex-shrink: 0; }
+    .feature-text { font-size: 13px; color: #b0b0c0; line-height: 1.5; }
+    .feature-text strong { color: #e0e0e8; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">🔮</div>
+    <h1>PRYZM Setup</h1>
+    <p class="subtitle">Your AI-powered competitive intelligence assistant</p>
+
+    <div class="step">
+      <p class="step-title"><span class="step-number">1</span> Get your Gemini API Key</p>
+      <p class="step-desc">
+        Go to <a href="https://aistudio.google.com/apikey" target="_blank">Google AI Studio</a>
+        and create a free API key. It takes 30 seconds.
+      </p>
+    </div>
+
+    <div class="step">
+      <p class="step-title"><span class="step-number">2</span> Paste it here</p>
+      <div class="input-group">
+        <input type="password" id="api-key-input" placeholder="Paste your Gemini API key..." />
+        <button class="btn-save" id="btn-save">Save</button>
+      </div>
+      <div class="status" id="status"></div>
+    </div>
+
+    <div class="step">
+      <p class="step-title"><span class="step-number">3</span> Start analyzing</p>
+      <p class="step-desc">
+        Navigate to any Shopify or WooCommerce store, click the PRYZM icon in your toolbar,
+        and hit <strong>"Analyze Market"</strong>. The AI agents will do the rest.
+      </p>
+    </div>
+
+    <div class="features">
+      <h3>What PRYZM Does</h3>
+      <div class="feature-item">
+        <span class="feature-icon">📡</span>
+        <span class="feature-text"><strong>Scout Agent</strong> — Automatically finds and researches your competitors</span>
+      </div>
+      <div class="feature-item">
+        <span class="feature-icon">📊</span>
+        <span class="feature-text"><strong>Analyst Agent</strong> — Compares pricing, positioning, features, and marketing</span>
+      </div>
+      <div class="feature-item">
+        <span class="feature-icon">🎨</span>
+        <span class="feature-text"><strong>Creative Director</strong> — Generates TikTok, Meta, and Email ad scripts</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const input = document.getElementById('api-key-input');
+    const btn = document.getElementById('btn-save');
+    const status = document.getElementById('status');
+
+    // Load existing key
+    chrome.storage.sync.get(['gemini_api_key'], (result) => {
+      if (result.gemini_api_key) {
+        input.value = result.gemini_api_key;
+        showStatus('✅ API key is already configured. You\'re ready to go!', 'success');
+      }
+    });
+
+    btn.addEventListener('click', async () => {
+      const key = input.value.trim();
+      if (!key) {
+        showStatus('❌ Please paste your API key.', 'error');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Testing...';
+
+      // Test the key with a simple API call
+      try {
+        const testUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`;
+        const resp = await fetch(testUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ parts: [{ text: 'Say OK' }] }] })
+        });
+
+        if (resp.status === 429) {
+          // Key works but rate limited — still valid
+          chrome.storage.sync.set({ gemini_api_key: key });
+          showStatus('✅ API key saved! (Rate limited right now — try again in a minute)', 'success');
+        } else if (!resp.ok) {
+          const err = await resp.text();
+          showStatus(`❌ Invalid API key: ${err.substring(0, 100)}`, 'error');
+        } else {
+          chrome.storage.sync.set({ gemini_api_key: key });
+          showStatus('✅ API key verified and saved! You can close this tab.', 'success');
+        }
+      } catch (err) {
+        showStatus(`❌ Connection error: ${err.message}`, 'error');
+      }
+
+      btn.disabled = false;
+      btn.textContent = 'Save';
+    });
+
+    function showStatus(msg, type) {
+      status.textContent = msg;
+      status.className = `status ${type}`;
+    }
+  </script>
+</body>
+</html>

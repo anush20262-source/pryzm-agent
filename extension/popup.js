@@ -17,11 +17,25 @@ const state = { storeData: null, analysisData: null, creativesData: null };
 document.addEventListener('DOMContentLoaded', () => {
   bindButtons();
 
+  // Listen for agent progress updates
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (msg.type === 'AGENT_PROGRESS') {
+      updateLoadingProgress(msg.data);
+    }
+  });
+
+  // Check API key first
+  chrome.runtime.sendMessage({ type: 'CHECK_API_KEY' }, (keyResp) => {
+    if (chrome.runtime.lastError) return switchView('xray');
+    if (!keyResp?.hasKey) {
+      showApiKeyPrompt();
+    }
+  });
+
   // Try to get cached data from background.js
   try {
     chrome.runtime.sendMessage({ type: 'GET_CACHED_DATA' }, (resp) => {
       if (chrome.runtime.lastError || !resp) {
-        // No background — show empty state
         switchView('xray');
         return;
       }
@@ -81,6 +95,30 @@ function bindButtons() {
   on('btn-back-actions', 'click', () => switchView('radar'));
   on('btn-regenerate', 'click', generateCreatives);
   on('btn-retry', 'click', startAnalysis);
+  on('btn-settings', 'click', () => chrome.runtime.openOptionsPage());
+  on('btn-setup-key', 'click', () => chrome.runtime.openOptionsPage());
+}
+
+function showApiKeyPrompt() {
+  const errorEl = document.getElementById('error-message');
+  if (errorEl) errorEl.innerHTML = 'No API key configured.<br><br>Click below to set up your Gemini API key (free, 30 seconds).';
+  const retryBtn = document.getElementById('btn-retry');
+  if (retryBtn) retryBtn.style.display = 'none';
+  const setupBtn = document.getElementById('btn-setup-key');
+  if (setupBtn) setupBtn.style.display = 'inline-flex';
+  switchView('error');
+}
+
+function updateLoadingProgress(data) {
+  const phaseEl = document.querySelector('.phase-step.active');
+  if (phaseEl && data.agent) {
+    phaseEl.querySelector('.phase-label')?.setAttribute('data-agent', data.agent);
+  }
+  // Update loading text if visible
+  const loadingText = document.querySelector('.loading-subtitle');
+  if (loadingText && data.status === 'tool') {
+    loadingText.textContent = `${data.agent} is using ${data.tool}...`;
+  }
 }
 
 function on(id, event, handler) {

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "PRYZM — Competitive Intelligence Agent",
-  "version": "1.0.0",
-  "description": "AI-powered competitive intelligence for e-commerce stores. Reveals market gaps, competitor strategies, and generates ready-to-deploy marketing creatives.",
+  "name": "PRYZM — AI Competitive Intelligence",
+  "version": "2.0.0",
+  "description": "AI-powered competitive intelligence for e-commerce. 3 AI agents research competitors, analyze gaps, and generate ad creatives — all inside your browser.",
   "permissions": [
     "activeTab",
     "storage",
@@ -11,6 +11,7 @@
   "host_permissions": [
     "https://*.myshopify.com/*",
     "https://*.shopify.com/*",
+    "https://generativelanguage.googleapis.com/*",
     "<all_urls>"
   ],
   "action": {
@@ -31,6 +32,7 @@
       "run_at": "document_idle"
     }
   ],
+  "options_page": "settings.html",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
