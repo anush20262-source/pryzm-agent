@@ -142,9 +142,14 @@ async function handleMessage(msg, sendResponse) {
       }
 
       case 'SAVE_API_KEY': {
-        chrome.storage.local.set({ gemini_api_key: data.key }, () => {
-          sendResponse({ success: true });
-        });
+        const apiKey = msg.key || data.key || data;
+        if (apiKey && typeof apiKey === 'string') {
+          chrome.storage.local.set({ gemini_api_key: apiKey }, () => {
+            sendResponse({ success: true });
+          });
+        } else {
+          sendResponse({ error: 'No API key provided.' });
+        }
         break;
       }
 
@@ -280,8 +285,8 @@ async function runCreativePipeline(data, sendResponse) {
     }
 
     const state = await getState();
-    const analysis = data?.analysis || state.analysisData;
-    const store = data?.store || state.storeData;
+    const analysis = data?.analysis || data?.analysisData || state.analysisData;
+    const store = data?.store || data?.storeData || state.storeData;
     if (!analysis) {
       sendResponse({ error: 'Run analysis first before generating creatives.' });
       await saveState({ pipelineRunning: false });
@@ -294,7 +299,7 @@ async function runCreativePipeline(data, sendResponse) {
 
     await saveState({ creativesData: prescriptions, pipelineRunning: false });
 
-    sendResponse({ success: true, prescriptions });
+    sendResponse({ success: true, prescriptions, creatives: prescriptions });
 
   } catch (err) {
     console.error('[BG] Creative failed:', err.message);

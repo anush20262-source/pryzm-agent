@@ -603,41 +603,51 @@
   async function handleSaveKey() {
     const key = $('#apiKeyInput').value.trim();
     const status = $('#settingsStatus');
+    const saveBtn = $('#saveKeyBtn');
 
     if (!key) {
-      status.textContent = 'Please enter an API key.';
+      status.textContent = '❌ Please paste your API key.';
       status.className = 'sp-status error';
       show(status);
       return;
     }
 
-    // Validate with a test call
-    try {
-      const result = await sendMsg('SAVE_API_KEY', { key: key });
+    // Disable button while testing
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Testing...'; }
 
-      if (result?.success) {
-        // Also save to local storage directly
+    try {
+      // Test the key with a real API call
+      const testUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+      const resp = await fetch(testUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+        body: JSON.stringify({ contents: [{ parts: [{ text: 'Say OK' }] }] }),
+      });
+
+      if (resp.status === 429) {
+        // Key is valid but rate limited — save it anyway
         await chrome.storage.local.set({ gemini_api_key: key });
-        status.textContent = '✓ API key saved and validated successfully.';
+        status.textContent = '✅ API key saved! (Rate limited right now — wait a minute before analyzing)';
         status.className = 'sp-status success';
-      } else {
-        status.textContent = result?.error || 'Invalid API key. Please check and try again.';
+      } else if (!resp.ok) {
+        status.textContent = '❌ Invalid API key. Double-check and try again.';
         status.className = 'sp-status error';
+      } else {
+        // Key works perfectly — save it
+        await chrome.storage.local.set({ gemini_api_key: key });
+        status.textContent = '✅ API key saved! Switch to Dashboard to start analyzing.';
+        status.className = 'sp-status success';
       }
     } catch (err) {
-      // Fallback: save directly if background doesn't handle SAVE_API_KEY
-      try {
-        await chrome.storage.local.set({ gemini_api_key: key });
-        status.textContent = '✓ API key saved locally.';
-        status.className = 'sp-status success';
-      } catch {
-        status.textContent = 'Failed to save: ' + err.message;
-        status.className = 'sp-status error';
-      }
+      // Network error — save anyway (user might be offline temporarily)
+      await chrome.storage.local.set({ gemini_api_key: key });
+      status.textContent = '⚠️ Could not validate (network error), but key is saved.';
+      status.className = 'sp-status success';
     }
 
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save API Key'; }
     show(status);
-    setTimeout(() => hide(status), 4000);
+    setTimeout(() => hide(status), 5000);
   }
 
   function toggleKeyVisibility() {
