@@ -601,53 +601,71 @@
   }
 
   async function handleSaveKey() {
-    const key = $('#apiKeyInput').value.trim();
+    const rawInput = $('#apiKeyInput').value.trim();
     const status = $('#settingsStatus');
     const saveBtn = $('#saveKeyBtn');
 
-    if (!key) {
+    if (!rawInput) {
       status.textContent = '❌ Please paste your API key.';
       status.className = 'sp-status error';
       show(status);
       return;
     }
 
+    // Split by comma for multi-key support
+    const keys = rawInput.split(',').map(k => k.trim()).filter(k => k.length > 10);
+
+    if (keys.length === 0) {
+      status.textContent = '❌ No valid keys found. Keys should start with AIzaSy...';
+      status.className = 'sp-status error';
+      show(status);
+      return;
+    }
+
     // Disable button while testing
-    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Testing...'; }
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = `Testing ${keys.length} key${keys.length > 1 ? 's' : ''}...`; }
+
+    // Test only the FIRST key
+    const testKey = keys[0];
 
     try {
-      // Test the key with a real API call
-      const testUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+      const testUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent';
       const resp = await fetch(testUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': testKey },
         body: JSON.stringify({ contents: [{ parts: [{ text: 'Say OK' }] }] }),
       });
 
       if (resp.status === 429) {
-        // Key is valid but rate limited — save it anyway
-        await chrome.storage.local.set({ gemini_api_key: key });
-        status.textContent = '✅ API key saved! (Rate limited right now — wait a minute before analyzing)';
+        // Key is valid but rate limited — save all keys anyway
+        await chrome.storage.local.set({ gemini_api_key: rawInput });
+        const msg = keys.length > 1
+          ? `✅ ${keys.length} keys saved! Key #1 is rate limited — PRYZM will auto-rotate to others.`
+          : '✅ Key saved! Rate limited right now — wait a minute before analyzing.';
+        status.textContent = msg;
         status.className = 'sp-status success';
       } else if (!resp.ok) {
-        status.textContent = '❌ Invalid API key. Double-check and try again.';
+        status.textContent = '❌ First key is invalid. Make sure it starts with AIzaSy... from aistudio.google.com/apikey';
         status.className = 'sp-status error';
       } else {
-        // Key works perfectly — save it
-        await chrome.storage.local.set({ gemini_api_key: key });
-        status.textContent = '✅ API key saved! Switch to Dashboard to start analyzing.';
+        // Key works — save all keys
+        await chrome.storage.local.set({ gemini_api_key: rawInput });
+        const msg = keys.length > 1
+          ? `✅ ${keys.length} keys saved! PRYZM will rotate between them automatically.`
+          : '✅ API key saved! Switch to Dashboard to start analyzing.';
+        status.textContent = msg;
         status.className = 'sp-status success';
       }
     } catch (err) {
-      // Network error — save anyway (user might be offline temporarily)
-      await chrome.storage.local.set({ gemini_api_key: key });
-      status.textContent = '⚠️ Could not validate (network error), but key is saved.';
+      // Network error — save anyway
+      await chrome.storage.local.set({ gemini_api_key: rawInput });
+      status.textContent = '⚠️ Could not validate (network error), but key(s) saved.';
       status.className = 'sp-status success';
     }
 
     if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save API Key'; }
     show(status);
-    setTimeout(() => hide(status), 5000);
+    setTimeout(() => hide(status), 6000);
   }
 
   function toggleKeyVisibility() {
