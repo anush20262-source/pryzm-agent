@@ -246,11 +246,17 @@ async function runAnalysisPipeline(storeData, sendResponse) {
 
     // Agent 1: Scout
     console.log(`[BG] 📡 Scout Agent starting for "${storeData.store_name}"...`);
+    broadcastProgress({ agent: 'Scout', status: 'searching', message: 'Searching for competitors...' });
     const scoutResult = await self.ScoutAgent.runScoutAgent(storeData, broadcastProgress, memory);
     console.log(`[BG] Scout found ${scoutResult.competitors?.length || 0} competitors`);
+    broadcastProgress({ agent: 'Scout', status: 'done', message: `Found ${scoutResult.competitors?.length || 0} competitors` });
+
+    // Cooldown between agents — prevents burst rate limiting
+    await new Promise(r => setTimeout(r, 3000));
 
     // Agent 2: Analyst
     console.log('[BG] 📊 Analyst Agent starting...');
+    broadcastProgress({ agent: 'Analyst', status: 'starting', message: 'Analyzing competitive gaps...' });
     const analysisResult = await self.AnalystAgent.runAnalystAgent(storeData, scoutResult, broadcastProgress, memory);
     console.log(`[BG] Analysis complete. Score: ${analysisResult.overall_score}/100`);
 

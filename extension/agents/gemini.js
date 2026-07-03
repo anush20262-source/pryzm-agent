@@ -199,7 +199,7 @@ async function callGeminiWithSearch(apiKey, model, prompt, systemInstruction) {
  * @param {Function} config.onProgress  - Callback for progress updates
  * @returns {Object} Parsed JSON response
  */
-async function runAgent({ name, systemPrompt, userPrompt, tools, toolHandlers, maxTurns = 6, onProgress }) {
+async function runAgent({ name, systemPrompt, userPrompt, tools, toolHandlers, maxTurns = 4, onProgress }) {
   const apiKey = await getApiKey();
   if (!apiKey) {
     throw new Error('No Gemini API key configured. Open PRYZM Settings and add your key.');
@@ -219,6 +219,9 @@ async function runAgent({ name, systemPrompt, userPrompt, tools, toolHandlers, m
       for (let turn = 1; turn <= maxTurns; turn++) {
         console.log(`   [${name}] Turn ${turn}/${maxTurns}`);
         if (onProgress) onProgress({ agent: name, status: 'thinking', turn, maxTurns });
+
+        // Pace API calls — 2s delay between turns to avoid burst rate limits
+        if (turn > 1) await sleep(2000);
 
         const result = await callGemini(apiKey, model, contents, tools, systemPrompt);
 

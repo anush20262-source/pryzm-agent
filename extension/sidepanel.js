@@ -717,24 +717,41 @@
 
       switch (message.type) {
         case 'AGENT_PROGRESS': {
-          const { phase, progress, status } = message;
-          if (phase) {
-            setLoadingPhase(phase, progress || 0);
+          const d = message.data || message;
+          const agentName = (d.agent || '').toLowerCase();
+          const agentStatus = d.status || '';
+
+          // Map agent name → loading phase
+          const phaseMap = { scout: 'scout', analyst: 'analyst', creative: 'creative' };
+          const phase = phaseMap[agentName] || agentName;
+
+          // Calculate percentage based on agent + status
+          let pct = 0;
+          if (agentName === 'scout') {
+            pct = agentStatus === 'searching' ? 10 :
+                  agentStatus === 'found' ? 20 :
+                  agentStatus === 'tool' ? 30 :
+                  agentStatus === 'thinking' ? 25 :
+                  agentStatus === 'done' ? 40 : 15;
+          } else if (agentName === 'analyst') {
+            pct = agentStatus === 'starting' ? 45 :
+                  agentStatus === 'tool' ? 60 :
+                  agentStatus === 'thinking' ? 55 :
+                  agentStatus === 'done' ? 75 : 50;
+          } else if (agentName === 'creative') {
+            pct = agentStatus === 'starting' ? 80 :
+                  agentStatus === 'tool' ? 85 :
+                  agentStatus === 'thinking' ? 85 :
+                  agentStatus === 'done' ? 95 : 80;
           }
-          // If analysis complete
-          if (status === 'complete' && message.data) {
-            hideLoading();
-            if (message.data.storeData) populateXRay(message.data.storeData);
-            if (message.data.analysisData) populateRadar(message.data.analysisData);
-            show($('#xraySection'));
-            show($('#actionsSection'));
-            loadHistory();
-          }
-          if (status === 'error') {
-            hideLoading();
-            showDashboardError(message.error || 'Analysis failed.');
-            show($('#dashboardEmpty'));
-          }
+
+          if (phase) setLoadingPhase(phase, pct);
+
+          // Update status text
+          const statusText = d.message || `${d.agent || 'Agent'} — ${agentStatus}${d.tool ? ` (${d.tool})` : ''}`;
+          const pctEl = $('#loadingPct');
+          if (pctEl) pctEl.textContent = `${Math.round(pct)}%`;
+
           break;
         }
 
