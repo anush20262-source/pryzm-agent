@@ -1,29 +1,59 @@
 /**
- * PRYZM Gemini Client (v3 — Hardened)
- * =====================================
+ * PRYZM Gemini Client (v4 — Rate Limit Optimized)
+ * ==================================================
  * Calls Gemini API directly via REST from Chrome extension service worker.
  * 
- * Fixes applied:
- *   - API key sent via header (not URL query param)
- *   - Proper Error objects (not plain objects)
- *   - AbortController timeout on all API calls
- *   - Shorter retry backoff (4s, 8s, 16s)
- *   - No key logging
+ * Rate limit solutions:
+ *   - Primary model: flash-lite (30 RPM free tier vs 15 RPM for flash)
+ *   - Multi-key rotation: add multiple keys separated by commas
+ *   - Smart retry with exponential backoff
+ *   - API key sent via header (not URL)
+ *   - 60s timeout on all API calls
  */
 
-const GEMINI_MODELS = ['gemini-2.0-flash', 'gemini-2.0-flash-lite'];
+// flash-lite first: 30 RPM free tier (double the rate of flash)
+const GEMINI_MODELS = ['gemini-2.0-flash-lite', 'gemini-2.0-flash'];
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
-const API_TIMEOUT_MS = 60000; // 60 second timeout per call
+const API_TIMEOUT_MS = 60000;
+
+// Track which key index to use next (round-robin)
+let currentKeyIndex = 0;
 
 /**
- * Get the stored Gemini API key from chrome.storage
+ * Get all stored API keys (supports comma-separated multi-key)
  */
-async function getApiKey() {
+async function getAllApiKeys() {
   return new Promise((resolve) => {
     chrome.storage.local.get(['gemini_api_key'], (result) => {
-      resolve(result.gemini_api_key || '');
+      const raw = result.gemini_api_key || '';
+      const keys = raw.split(',').map(k => k.trim()).filter(k => k.length > 10);
+      resolve(keys);
     });
   });
+}
+
+/**
+ * Get the next API key (rotates if multiple keys exist)
+ */
+async function getApiKey() {
+  const keys = await getAllApiKeys();
+  if (keys.length === 0) return '';
+  if (keys.length === 1) return keys[0];
+  // Round-robin rotation
+  const key = keys[currentKeyIndex % keys.length];
+  currentKeyIndex++;
+  return key;
+}
+
+/**
+ * Rotate to next key (called on rate limit)
+ */
+async function rotateKey() {
+  const keys = await getAllApiKeys();
+  if (keys.length > 1) {
+    currentKeyIndex++;
+    console.log(`[Gemini] Rotated to key #${(currentKeyIndex % keys.length) + 1} of ${keys.length}`);
+  }
 }
 
 /**
@@ -71,12 +101,14 @@ async function callGemini(apiKey, model, contents, tools, systemInstruction, att
 
     if (response.status === 429) {
       if (attempt <= 3) {
+        await rotateKey(); // Try next key if available
+        const newKey = await getApiKey();
         const waitSec = Math.pow(2, attempt) * 2; // 4s, 8s, 16s
-        console.log(`[Gemini] Rate limited. Waiting ${waitSec}s (attempt ${attempt}/3)...`);
+        console.log(`[Gemini] Rate limited. Rotating key + waiting ${waitSec}s (attempt ${attempt}/3)...`);
         await sleep(waitSec * 1000);
-        return callGemini(apiKey, model, contents, tools, systemInstruction, attempt + 1);
+        return callGemini(newKey || apiKey, model, contents, tools, systemInstruction, attempt + 1);
       }
-      const err = new Error('Rate limit exceeded after 3 retries. Please wait a minute and try again.');
+      const err = new Error('Rate limit exceeded after 3 retries. Add more API keys in Settings (comma-separated) or wait a minute.');
       err.rateLimited = true;
       throw err;
     }

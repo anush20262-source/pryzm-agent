@@ -123,34 +123,54 @@ async function runScoutAgent(storeData, onProgress, memory) {
 
   const niche = storeData.niche_signals?.keywords?.join(', ') || storeData.store_name || 'e-commerce';
   const storeName = storeData.store_name || 'Unknown Store';
+  const platform = storeData.platform || 'shopify';
 
-  // ── Phase 1: Find competitors via Search Grounding ────────────────
   console.log('[Scout] Phase 1: Searching for competitors via Gemini Search Grounding...');
-  if (onProgress) onProgress({ agent: 'Scout', status: 'searching', message: 'Searching the web for competitors...' });
+  if (onProgress) onProgress({ agent: 'Scout', status: 'searching', message: `Searching for ${niche} competitors on ${platform}...` });
 
   const memoryContext = memory
     ? `\n\nPREVIOUS ANALYSIS MEMORY:\n${memory}\nCompare with previous findings. Note any changes.`
     : '';
 
-  const searchPrompt = `Find the top 5 online e-commerce competitors for a store called "${storeName}" that sells products in the "${niche}" niche.
-Their website is: ${storeData.url || 'unknown'}
-Their products include: ${(storeData.products || []).slice(0, 5).map(p => p.name).join(', ')}
+  // Build platform-specific search hints
+  const platformSearchHints = {
+    shopify: 'Look for stores on Shopify (URLs containing .myshopify.com or powered by Shopify)',
+    woocommerce: 'Look for stores using WooCommerce (WordPress-based online stores)',
+    bigcommerce: 'Look for stores on BigCommerce platform',
+    squarespace: 'Look for stores built on Squarespace Commerce',
+  };
+  const platformHint = platformSearchHints[platform] || platformSearchHints.shopify;
+
+  const searchPrompt = `Find the top 5 DIRECT e-commerce competitor stores for "${storeName}" in the "${niche}" niche.
+
+SEARCH STRATEGY — Search specifically for:
+1. "${niche} online store shopify" — find Shopify competitors
+2. "${niche} shop similar to ${storeName}" — find direct alternatives
+3. "best ${niche} brands online store" — find market leaders
+4. "${(storeData.products || []).slice(0, 3).map(p => p.name).join(', ')} buy online" — product-based search
+
+${platformHint}
+
+Their website: ${storeData.url || 'unknown'}
+Their products: ${(storeData.products || []).slice(0, 5).map(p => p.name).join(', ')}
 ${memoryContext}
 
-Return a JSON array of competitor objects with these fields:
-- "name": store/brand name
-- "url": their main website URL (must be a real, working URL)
-- "why": one sentence explaining why they're a competitor
+RULES:
+- Only return REAL e-commerce stores (not marketplaces like Amazon/eBay/Etsy)
+- Only return stores that SELL products (not blogs, reviews, or directories)
+- Prefer stores on Shopify, WooCommerce, BigCommerce, or Squarespace
+- Each URL must be a direct store homepage (not a product page)
+- Return at least 3, max 5 competitors
 
-IMPORTANT: Only include REAL stores that actually exist. Return at least 3 competitors.
+Return JSON array: [{"name": "Store Name", "url": "https://store.com", "why": "reason", "platform": "shopify|woocommerce|other"}]
 Format: \`\`\`json [...] \`\`\``;
 
   let competitorUrls = [];
 
   try {
     const searchResult = await self.GeminiAgent.callGeminiWithSearch(
-      apiKey, 'gemini-2.0-flash', searchPrompt,
-      'You are a market research assistant. Find real competitor stores via web search. Always return valid JSON.'
+      apiKey, 'gemini-2.0-flash-lite', searchPrompt,
+      'You are an e-commerce market researcher. Find REAL competitor online stores via web search. Focus on Shopify, WooCommerce, and independent D2C brands. Never suggest Amazon, eBay, Etsy, or Walmart. Always return valid JSON.'
     );
 
     const searchText = searchResult.candidates?.[0]?.content?.parts?.find(p => p.text)?.text || '';
