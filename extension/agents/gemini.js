@@ -101,7 +101,6 @@ async function callGemini(apiKey, model, contents, tools, systemInstruction, att
 
     if (response.status === 429) {
       if (attempt <= 3) {
-        await rotateKey(); // Try next key if available
         const newKey = await getApiKey();
         const waitSec = Math.pow(2, attempt) * 2; // 4s, 8s, 16s
         console.log(`[Gemini] Rate limited. Rotating key + waiting ${waitSec}s (attempt ${attempt}/3)...`);
