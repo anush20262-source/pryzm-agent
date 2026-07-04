@@ -333,6 +333,12 @@
       setTimeout(async () => {
         try {
           const response = await chrome.tabs.sendMessage(tab.id, { type: 'EXTRACT_STORE_DATA' });
+          
+          if (response?.error === 'ADMIN_PORTAL') {
+            showDashboardError('You are on the store admin dashboard! Please open the live public storefront (e.g. yourstore.com) to scan products.');
+            return;
+          }
+
           if (response?.success && response?.data) {
             state.storeData = response.data;
             populateXRay(response.data);
@@ -341,7 +347,7 @@
           } else {
             showDashboardError('Could not detect a store on this page. Navigate to a Shopify or WooCommerce store.');
           }
-        } catch {
+        } catch (err) {
           showDashboardError('Could not communicate with the page. Try refreshing the page.');
         }
       }, 500);

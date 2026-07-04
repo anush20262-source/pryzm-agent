@@ -165,7 +165,7 @@
       }
     }
 
-    if (name || price) {
+    if (name && price && name.length > 2) {
       products.push({ name, price, description, image });
     }
 
@@ -208,7 +208,14 @@
 
   // ─── Master Extraction Pipeline ───────────────────────────────────
   function extractAllData() {
-    // Merge products from all sources, prioritizing JSON-LD
+    // 1. Block execution on Admin portals
+    const host = window.location.hostname;
+    const path = window.location.pathname;
+    if (host.includes('admin.shopify.com') || path.includes('/wp-admin')) {
+      throw new Error('ADMIN_PORTAL');
+    }
+
+    // 2. Merge products from all sources, prioritizing JSON-LD
     let products = extractJsonLd();
     if (products.length === 0) products = extractOpenGraph();
     if (products.length === 0) products = extractFromDom();
