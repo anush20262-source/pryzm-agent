@@ -271,14 +271,14 @@
           <h3 class="sp-section-title">API Configuration</h3>
         </div>
         <div class="sp-card sp-settings-card">
-          <label class="sp-label" for="apiKeyInput">Gemini API Key</label>
-          <div class="sp-input-group">
-            <input type="password" class="sp-input" id="apiKeyInput" placeholder="Enter your API key…" autocomplete="off">
-            <button class="sp-icon-btn" id="toggleKeyVisibility" aria-label="Toggle visibility">👁</button>
+          <label class="sp-label">Gemini API Keys (Rate Limit Rotation)</label>
+          <div id="apiKeysContainer" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px;">
+            <!-- Key rows injected here -->
           </div>
-          <p class="sp-help-text">Your key is stored locally and never sent to third-party servers.</p>
-          <p class="sp-help-text" style="color: #a78bfa;">💡 <strong>Pro tip:</strong> Add multiple keys separated by commas to avoid rate limits. Each team member can contribute a key!</p>
-          <button class="sp-btn sp-btn-primary sp-btn-full" id="saveKeyBtn">Save API Key</button>
+          <button class="sp-btn sp-btn-secondary sp-btn-full" id="addKeyRowBtn" style="margin-bottom: 12px; background: rgba(139,92,246,0.1); color: var(--accent); border: 1px dashed var(--accent);">+ Add Another Key</button>
+          
+          <p class="sp-help-text">Your keys are stored locally. PRYZM automatically rotates through them to prevent rate limiting across all agents.</p>
+          <button class="sp-btn sp-btn-primary sp-btn-full" id="saveKeyBtn">Save All Keys</button>
           <div class="sp-status hidden" id="settingsStatus"></div>
         </div>
       </div>

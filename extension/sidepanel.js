@@ -837,7 +837,7 @@
 
     // Settings
     $('#saveKeyBtn').addEventListener('click', handleSaveKey);
-    $('#toggleKeyVisibility').addEventListener('click', toggleKeyVisibility);
+    $('#addKeyRowBtn').addEventListener('click', () => createKeyRow());
     $('#clearCacheBtn').addEventListener('click', handleClearCache);
   }
 
