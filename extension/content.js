@@ -100,73 +100,65 @@
   function extractFromDom() {
     const products = [];
 
-    // Product name from h1
-    const h1 = document.querySelector('h1');
-    const name = h1?.textContent?.trim() || '';
-
-    // Price from common selectors
-    const priceSelectors = [
-      '.price .money',
-      '.product-price .money',
-      '.price-item--regular',
-      '[data-price]',
-      '.product-price',
-      '.price',
-      '.woocommerce-Price-amount',
-      '.current-price',
-      '#product-price',
-      '.product__price',
+    // 1. Try to find product grids/cards (Homepage / Collection pages)
+    const cardSelectors = [
+      '.product-card', '.grid-product', '.product-item', 'li.product', 
+      '.card-wrapper', '.product-block', '.product__card', '.grid__item'
     ];
+    
+    let cards = [];
+    for (const sel of cardSelectors) {
+      cards = Array.from(document.querySelectorAll(sel));
+      if (cards.length > 0) break;
+    }
 
-    let price = '';
-    for (const sel of priceSelectors) {
-      const el = document.querySelector(sel);
-      if (el) {
-        // Use data-price attribute if available, otherwise text
-        price = el.dataset?.price || el.textContent?.trim() || '';
-        if (price) break;
+    if (cards.length > 0) {
+      for (const card of cards.slice(0, 10)) { // limit to 10
+        const nameEl = card.querySelector('h2, h3, h4, .title, .product-card__title, .card__heading, .full-unstyled-link');
+        const priceEl = card.querySelector('.price, .money, [data-price], .product-price, .price-item');
+        const imgEl = card.querySelector('img');
+
+        const name = nameEl?.textContent?.trim() || '';
+        const price = priceEl?.dataset?.price || priceEl?.textContent?.trim() || '';
+        const image = imgEl?.src || imgEl?.dataset?.src || '';
+
+        if (name && price && name.length > 2) {
+          products.push({ name, price, description: '', image });
+        }
       }
     }
 
-    // Description from common selectors
-    const descSelectors = [
-      '.product-description',
-      '#product-description',
-      '.product__description',
-      '.woocommerce-product-details__short-description',
-      '[data-product-description]',
-      '.product-single__description',
-    ];
-
-    let description = '';
-    for (const sel of descSelectors) {
-      const el = document.querySelector(sel);
-      if (el) {
-        description = el.textContent?.trim().substring(0, 500) || '';
-        if (description) break;
+    // 2. If no cards found (or we found nothing valid), try the Single Product Page fallback
+    if (products.length === 0) {
+      const h1 = document.querySelector('h1');
+      const name = h1?.textContent?.trim() || '';
+  
+      const priceSelectors = [
+        '.price .money', '.product-price .money', '.price-item--regular',
+        '[data-price]', '.product-price', '.price', '.woocommerce-Price-amount',
+        '.current-price', '#product-price', '.product__price',
+      ];
+  
+      let price = '';
+      for (const sel of priceSelectors) {
+        const el = document.querySelector(sel);
+        if (el) {
+          price = el.dataset?.price || el.textContent?.trim() || '';
+          if (price) break;
+        }
       }
-    }
+      
+      let description = '';
+      const descEl = document.querySelector('.product-description, #product-description, .product__description, .woocommerce-product-details__short-description');
+      if (descEl) description = descEl.textContent?.trim().substring(0, 500) || '';
 
-    // Product image
-    const imgSelectors = [
-      '.product-featured-image img',
-      '.product__media img',
-      '.woocommerce-product-gallery img',
-      '#product-image img',
-      '.product-image img',
-    ];
+      let image = '';
+      const imgEl = document.querySelector('.product-featured-image img, .product__media img, .woocommerce-product-gallery img, #product-image img');
+      if (imgEl) image = imgEl.src || '';
 
-    let image = '';
-    for (const sel of imgSelectors) {
-      const el = document.querySelector(sel);
-      if (el) {
-        image = el.src || el.dataset?.src || '';
-        if (image) break;
+      if (name && price && name.length > 2) {
+        products.push({ name, price, description, image });
       }
-    }
-
-    if (name && price && name.length > 2) {
-      products.push({ name, price, description, image });
     }
 
     return products;

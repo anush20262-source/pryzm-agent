@@ -604,31 +604,56 @@
   // ——————————————————————————————————————————————————————————
   // Settings
   // ——————————————————————————————————————————————————————————
+  function createKeyRow(value = '') {
+    const row = document.createElement('div');
+    row.className = 'sp-input-group';
+    row.innerHTML = `
+      <input type="password" class="sp-input sp-key-input" placeholder="Enter API key (AIzaSy...)" value="${esc(value)}" autocomplete="off">
+      <button class="sp-icon-btn sp-key-vis-btn" aria-label="Toggle visibility">👁</button>
+      <button class="sp-icon-btn sp-key-del-btn" aria-label="Delete key" style="color:#ef4444;">✕</button>
+    `;
+    
+    row.querySelector('.sp-key-vis-btn').addEventListener('click', () => {
+      const input = row.querySelector('.sp-key-input');
+      input.type = input.type === 'password' ? 'text' : 'password';
+    });
+
+    row.querySelector('.sp-key-del-btn').addEventListener('click', () => {
+      row.remove();
+      if ($$('.sp-key-input').length === 0) createKeyRow();
+    });
+
+    $('#apiKeysContainer').appendChild(row);
+  }
+
   async function loadApiKey() {
     try {
       const result = await chrome.storage.local.get('gemini_api_key');
+      const container = $('#apiKeysContainer');
+      container.innerHTML = '';
+      
       if (result?.gemini_api_key) {
-        $('#apiKeyInput').placeholder = 'API key is saved (enter new key to replace)';
+        const keys = result.gemini_api_key.split(',').map(k => k.trim()).filter(Boolean);
+        if (keys.length > 0) {
+          keys.forEach(k => createKeyRow(k));
+        } else {
+          createKeyRow();
+        }
+      } else {
+        createKeyRow();
       }
     } catch {
-      // silent
+      createKeyRow();
     }
   }
 
   async function handleSaveKey() {
-    const rawInput = $('#apiKeyInput').value.trim();
+    const inputs = $$('.sp-key-input');
+    const keys = inputs.map(input => input.value.trim()).filter(k => k.length > 10);
+    const rawInput = keys.join(',');
+    
     const status = $('#settingsStatus');
     const saveBtn = $('#saveKeyBtn');
-
-    if (!rawInput) {
-      status.textContent = '❌ Please paste your API key.';
-      status.className = 'sp-status error';
-      show(status);
-      return;
-    }
-
-    // Split by comma for multi-key support
-    const keys = rawInput.split(',').map(k => k.trim()).filter(k => k.length > 10);
 
     if (keys.length === 0) {
       status.textContent = '❌ No valid keys found. Keys should start with AIzaSy...';
@@ -652,40 +677,30 @@
       });
 
       if (resp.status === 429) {
-        // Key is valid but rate limited — save all keys anyway
         await chrome.storage.local.set({ gemini_api_key: rawInput });
-        const msg = keys.length > 1
+        status.textContent = keys.length > 1
           ? `✅ ${keys.length} keys saved! Key #1 is rate limited — PRYZM will auto-rotate to others.`
           : '✅ Key saved! Rate limited right now — wait a minute before analyzing.';
-        status.textContent = msg;
         status.className = 'sp-status success';
       } else if (!resp.ok) {
         status.textContent = '❌ First key is invalid. Make sure it starts with AIzaSy... from aistudio.google.com/apikey';
         status.className = 'sp-status error';
       } else {
-        // Key works — save all keys
         await chrome.storage.local.set({ gemini_api_key: rawInput });
-        const msg = keys.length > 1
+        status.textContent = keys.length > 1
           ? `✅ ${keys.length} keys saved! PRYZM will rotate between them automatically.`
           : '✅ API key saved! Switch to Dashboard to start analyzing.';
-        status.textContent = msg;
         status.className = 'sp-status success';
       }
     } catch (err) {
-      // Network error — save anyway
       await chrome.storage.local.set({ gemini_api_key: rawInput });
       status.textContent = '⚠️ Could not validate (network error), but key(s) saved.';
       status.className = 'sp-status success';
     }
 
-    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save API Key'; }
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save All Keys'; }
     show(status);
     setTimeout(() => hide(status), 6000);
-  }
-
-  function toggleKeyVisibility() {
-    const input = $('#apiKeyInput');
-    input.type = input.type === 'password' ? 'text' : 'password';
   }
 
   async function handleClearCache() {
