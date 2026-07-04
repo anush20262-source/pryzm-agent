@@ -117,7 +117,10 @@ async function handleMessage(msg, sendResponse) {
   try {
     switch (type) {
       case 'STORE_DATA_EXTRACTED': {
-        await saveState({ storeData: data });
+        const extractedData = data.data || data;
+        if (extractedData?.store_name || extractedData?.products?.length) {
+          await saveState({ storeData: extractedData });
+        }
         sendResponse({ success: true });
         break;
       }
@@ -264,8 +267,11 @@ async function runAnalysisPipeline(storeData, sendResponse) {
     await saveState({ storeData, analysisData: analysisResult, creativesData: null });
     await saveToHistory(storeData, analysisResult);
 
+    broadcastProgress({ agent: 'Analyst', status: 'done', message: `Score: ${analysisResult.overall_score || 0}/100` });
+
     sendResponse({
       success: true,
+      analysisData: analysisResult,
       gap_analysis: analysisResult,
       scout_data: { competitors_found: scoutResult.competitors?.length || 0, niche_summary: scoutResult.niche_summary },
     });

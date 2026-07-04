@@ -146,7 +146,7 @@
     show($('#radarSection'));
     show($('#gapSection'));
 
-    const overall = data.overallScore ?? data.score ?? 0;
+    const overall = data.overall_score ?? data.overallScore ?? data.score ?? 0;
     $('#overallScore').textContent = overall;
 
     // Animate score ring
@@ -162,12 +162,13 @@
       });
     }
 
-    // Dimension bars
+    // Map analyst's gap_scorecard to dimension bars
+    const scorecard = data.gap_scorecard || {};
     const dims = {
-      positioning: data.positioning ?? data.dimensions?.positioning ?? 0,
-      pricing:     data.pricing     ?? data.dimensions?.pricing     ?? 0,
-      features:    data.features    ?? data.dimensions?.features    ?? 0,
-      marketing:   data.marketing   ?? data.dimensions?.marketing   ?? 0,
+      positioning: scorecard.positioning?.score ?? data.positioning ?? 0,
+      pricing:     scorecard.pricing?.score     ?? data.pricing     ?? 0,
+      features:    scorecard.features?.score    ?? data.features    ?? 0,
+      marketing:   scorecard.marketing?.score   ?? data.marketing   ?? 0,
     };
 
     Object.entries(dims).forEach(([key, val]) => {
@@ -180,8 +181,16 @@
       if (valEl) valEl.textContent = val;
     });
 
-    // Gap analysis
-    populateGaps(data.gaps || data.gapAnalysis || []);
+    // Gap analysis (convert scorecard object to array if needed)
+    let gaps = data.gaps || data.gapAnalysis || [];
+    if (gaps.length === 0 && data.gap_scorecard) {
+      gaps = Object.entries(data.gap_scorecard).map(([category, details]) => ({
+        title: `${capitalize(category)} Gap`,
+        description: details.gap || `Comparison between your ${category} and competitors.`,
+        severity: details.severity || 'medium'
+      }));
+    }
+    populateGaps(gaps);
   }
 
   function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
@@ -193,7 +202,7 @@
     const list = $('#gapList');
     list.innerHTML = '';
 
-    if (!gaps.length) {
+    if (!gaps || !gaps.length) {
       list.innerHTML = '<p class="sp-empty-sm" style="color:var(--text-muted);font-size:12px;">No gaps identified.</p>';
       return;
     }
@@ -204,7 +213,7 @@
       card.className = `sp-gap-card severity-${sev}`;
       card.innerHTML = `
         <div class="sp-gap-title">${esc(gap.title || gap.name)}</div>
-        <div class="sp-gap-desc">${esc(gap.description || gap.detail || '')}</div>
+        <div class="sp-gap-desc">${esc(gap.description || gap.detail || gap.gap || '')}</div>
         <span class="sp-gap-severity">${esc(sev)}</span>`;
       list.appendChild(card);
     });
