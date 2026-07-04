@@ -108,7 +108,7 @@ async function callGemini(apiKey, model, contents, tools, systemInstruction, att
         await sleep(waitSec * 1000);
         return callGemini(newKey || apiKey, model, contents, tools, systemInstruction, attempt + 1);
       }
-      const err = new Error('Rate limit exceeded after 3 retries. Add more API keys in Settings (comma-separated) or wait a minute.');
+      const err = new Error('Rate limit exceeded. Add more API keys in Settings to rotate through, or wait a minute.');
       err.rateLimited = true;
       throw err;
     }
