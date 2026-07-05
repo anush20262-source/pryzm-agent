@@ -175,11 +175,11 @@ PRYZM evaluates competitive position across four dimensions, scored 0-100:
 
 ## 👥 Team
 
-| Member | Role |
-|--------|------|
-| **Samiksha** | Backend orchestrator, AI pipeline, prompt engineering |
-| **Divya** | Extension frontend, content extraction |
-| **Deepti** | Competitor scraping, gap analysis parameters |
+- **Anush Pratap Singh**
+- **Divya Sangwan**
+- **Muhammad Umer Tahir**
+- **Ankit Kumar**
+- **Deepti Kalagatoori**
 
 ---
 
