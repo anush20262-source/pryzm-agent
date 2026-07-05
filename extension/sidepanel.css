@@ -669,6 +669,62 @@ html, body {
 }
 
 /* ======================================================
+   FETCHED COMPETITORS
+   ====================================================== */
+.sp-competitors-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sp-competitor-card {
+  padding: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  transition: var(--transition);
+}
+
+.sp-competitor-card:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--border-strong);
+}
+
+.sp-competitor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.sp-competitor-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.sp-competitor-platform {
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: rgba(139, 92, 246, 0.10);
+  color: var(--purple-light);
+}
+
+.sp-competitor-meta,
+.sp-competitor-products,
+.sp-competitor-positioning {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  margin-top: 4px;
+}
+
+/* ======================================================
    HISTORY
    ====================================================== */
 .sp-history-list {

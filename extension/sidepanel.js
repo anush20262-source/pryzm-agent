@@ -12,6 +12,7 @@
   const state = {
     storeData: null,
     analysisData: null,
+    scoutData: null,
     creativesData: null,
     chatMessages: [],
     activeTab: 'dashboard',
@@ -146,6 +147,9 @@
     show($('#radarSection'));
     show($('#gapSection'));
 
+    const competitorPayload = data?.competitor_data || data?.competitorData || data?.scoutData || state.scoutData || null;
+    populateCompetitors(competitorPayload);
+
     const overall = data.overall_score ?? data.overallScore ?? data.score ?? 0;
     $('#overallScore').textContent = overall;
 
@@ -219,6 +223,47 @@
     });
   }
 
+  function populateCompetitors(competitorData) {
+    const section = $('#competitorsSection');
+    const list = $('#competitorsList');
+    if (!section || !list) return;
+
+    state.scoutData = competitorData || null;
+    const competitors = competitorData?.competitors || competitorData?.data?.competitors || [];
+
+    if (!competitors.length) {
+      list.innerHTML = '<div class="sp-empty-sm"><p>No competitor data fetched yet.</p></div>';
+      hide(section);
+      return;
+    }
+
+    show(section);
+    list.innerHTML = '';
+
+    competitors.forEach(comp => {
+      const card = document.createElement('div');
+      card.className = 'sp-competitor-card';
+      const name = comp.name || comp.title || comp.store_name || 'Unknown competitor';
+      const platform = comp.platform || 'unknown';
+      const productCount = comp.product_count ?? comp.products?.length ?? 0;
+      const productNames = (comp.products || []).slice(0, 3).map(p => p.name || '').filter(Boolean);
+      const productText = productNames.length ? productNames.join(', ') : 'No product snapshot yet';
+      const urlText = comp.url ? `<div class="sp-competitor-meta">${esc(comp.url)}</div>` : '';
+      const positioningText = comp.positioning ? `<div class="sp-competitor-positioning">${esc(comp.positioning)}</div>` : '';
+
+      card.innerHTML = `
+        <div class="sp-competitor-head">
+          <div class="sp-competitor-name">${esc(name)}</div>
+          <span class="sp-competitor-platform">${esc(platform)}</span>
+        </div>
+        <div class="sp-competitor-meta">${productCount} product${productCount === 1 ? '' : 's'} fetched</div>
+        ${urlText}
+        <div class="sp-competitor-products">${esc(productText)}</div>
+        ${positioningText}`;
+      list.appendChild(card);
+    });
+  }
+
   // ——————————————————————————————————————————————————————————
   // Dashboard — History
   // ——————————————————————————————————————————————————————————
@@ -251,6 +296,9 @@
   function loadHistoryItem(item) {
     if (item.storeData) populateXRay(item.storeData);
     if (item.analysisData) populateRadar(item.analysisData);
+    if (item.scoutData || item.analysisData?.competitor_data) {
+      populateCompetitors(item.scoutData || item.analysisData.competitor_data);
+    }
   }
 
   // ——————————————————————————————————————————————————————————
@@ -389,6 +437,7 @@
 
       if (result?.analysisData) {
         populateRadar(result.analysisData);
+        populateCompetitors(result.analysisData?.competitor_data || result.scoutData || result.competitor_data || result.scout_data || null);
         show($('#xraySection'));
         show($('#actionsSection'));
       }
@@ -708,6 +757,7 @@
       await sendMsg('CLEAR_CACHE');
       state.storeData = null;
       state.analysisData = null;
+      state.scoutData = null;
       state.creativesData = null;
       state.chatMessages = [];
 
@@ -716,6 +766,7 @@
       hide($('#xraySection'));
       hide($('#radarSection'));
       hide($('#gapSection'));
+      hide($('#competitorsSection'));
       hide($('#actionsSection'));
 
       // Reset creatives
@@ -883,6 +934,7 @@
       }
       if (cached?.analysisData) {
         populateRadar(cached.analysisData);
+        populateCompetitors(cached.analysisData?.competitor_data || cached.scoutData || null);
       }
       if (cached?.creativesData) {
         populateCreatives(cached.creativesData);

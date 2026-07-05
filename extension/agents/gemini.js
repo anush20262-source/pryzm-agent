@@ -71,7 +71,7 @@ async function callGemini(apiKey, model, contents, tools, systemInstruction, att
 
   const body = {
     contents,
-    generationConfig: { temperature: 0.7, maxOutputTokens: 8192 },
+    generationConfig: { temperature: 0.7, maxOutputTokens: 4096 },
   };
 
   if (systemInstruction) {
@@ -137,7 +137,7 @@ async function callGeminiWithSearch(apiKey, model, prompt, systemInstruction) {
   const body = {
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
     tools: [{ google_search: {} }],
-    generationConfig: { temperature: 0.3, maxOutputTokens: 4096 },
+    generationConfig: { temperature: 0.3, maxOutputTokens: 2048 },
   };
 
   if (systemInstruction) {
@@ -198,7 +198,7 @@ async function callGeminiWithSearch(apiKey, model, prompt, systemInstruction) {
  * @param {Function} config.onProgress  - Callback for progress updates
  * @returns {Object} Parsed JSON response
  */
-async function runAgent({ name, systemPrompt, userPrompt, tools, toolHandlers, maxTurns = 4, onProgress }) {
+async function runAgent({ name, systemPrompt, userPrompt, tools, toolHandlers, maxTurns = 3, onProgress }) {
   const apiKey = await getApiKey();
   if (!apiKey) {
     throw new Error('No Gemini API key configured. Open PRYZM Settings and add your key.');

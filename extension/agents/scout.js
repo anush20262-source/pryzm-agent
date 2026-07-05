@@ -124,6 +124,7 @@ async function runScoutAgent(storeData, onProgress, memory) {
   const niche = storeData.niche_signals?.keywords?.join(', ') || storeData.store_name || 'e-commerce';
   const storeName = storeData.store_name || 'Unknown Store';
   const platform = storeData.platform || 'shopify';
+  const topProducts = (storeData.products || []).slice(0, 3).map(p => p.name).join(', ');
 
   console.log('[Scout] Phase 1: Searching for competitors via Gemini Search Grounding...');
   if (onProgress) onProgress({ agent: 'Scout', status: 'searching', message: `Searching for ${niche} competitors on ${platform}...` });
@@ -141,7 +142,7 @@ async function runScoutAgent(storeData, onProgress, memory) {
   };
   const platformHint = platformSearchHints[platform] || platformSearchHints.shopify;
 
-  const searchPrompt = `Find the top 5 DIRECT e-commerce competitor stores for "${storeName}" in the "${niche}" niche.
+  const searchPrompt = `Find the top 3 DIRECT e-commerce competitor stores for "${storeName}" in the "${niche}" niche.
 
 SEARCH STRATEGY — Search specifically for:
 1. "${niche} online store shopify" — find Shopify competitors
@@ -152,7 +153,7 @@ SEARCH STRATEGY — Search specifically for:
 ${platformHint}
 
 Their website: ${storeData.url || 'unknown'}
-Their products: ${(storeData.products || []).slice(0, 5).map(p => p.name).join(', ')}
+Their products: ${topProducts}
 ${memoryContext}
 
 RULES:
@@ -160,7 +161,7 @@ RULES:
 - Only return stores that SELL products (not blogs, reviews, or directories)
 - Prefer stores on Shopify, WooCommerce, BigCommerce, or Squarespace
 - Each URL must be a direct store homepage (not a product page)
-- Return at least 3, max 5 competitors
+- Return at least 3, max 3 competitors
 
 Return JSON array: [{"name": "Store Name", "url": "https://store.com", "why": "reason", "platform": "shopify|woocommerce|other"}]
 Format: \`\`\`json [...] \`\`\``;
@@ -231,7 +232,7 @@ Scrape the top 3 most relevant ones using scrape_store. Then compile your findin
     userPrompt: scrapePrompt,
     tools: SCOUT_TOOLS,
     toolHandlers: { scrape_store: scrapeStore },
-    maxTurns: 6,
+    maxTurns: 3,
     onProgress,
   });
 }

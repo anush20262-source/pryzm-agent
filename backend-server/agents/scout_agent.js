@@ -120,6 +120,7 @@ async function closeMcpClient() {
  */
 async function scrapeViaMcp(client, url, niche) {
   console.log(`   [Scout] 🌐 Scraping via MCP: ${url}`);
+  console.log(`   [Scout] 🧰 MCP tool call: scrape_competitor_data | niche=${niche || 'unknown'}`);
 
   const result = await client.callTool({
     name: 'scrape_competitor_data',
@@ -158,6 +159,7 @@ async function scrapeViaMcp(client, url, niche) {
 // ── Tool: Search for competitors ──────────────────────────────────────────
 async function searchCompetitors({ niche, keywords }) {
   console.log(`   [Scout] 🔍 Searching competitors for niche: "${niche}"`);
+  console.log(`   [Scout] 🧭 Search queries: ${queries.join(' | ')}`);
   
   // Use Google search via a simple fetch (no API needed for organic results page)
   const queries = [
@@ -177,6 +179,7 @@ async function searchCompetitors({ niche, keywords }) {
         }
       });
       const html = await response.text();
+      console.log(`   [Scout] 🌐 Search response received for query="${query}" | bytes=${html.length}`);
       const $ = cheerio.load(html);
       
       // Extract URLs from search results

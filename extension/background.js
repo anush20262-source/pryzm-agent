@@ -26,6 +26,7 @@ async function getState() {
       resolve(r.pryzm_state || {
         storeData: null,
         analysisData: null,
+        scoutData: null,
         creativesData: null,
         chatHistory: [],
         pipelineRunning: false,
@@ -64,6 +65,7 @@ async function saveToHistory(storeData, analysisData) {
     timestamp: new Date().toISOString(),
     storeData,
     analysisData,
+    scoutData: analysisData?.competitor_data || null,
   };
   history.unshift(entry); // newest first
   // Keep max 20 entries
@@ -102,6 +104,22 @@ async function checkPipelineStale() {
   }
 }
 
+async function getCachedAnalysisForStore(storeData) {
+  const currentUrl = (storeData?.url || '').trim().toLowerCase();
+  if (!currentUrl) return null;
+
+  const state = await getState();
+  const cachedStore = state.storeData;
+  const cachedUrl = (cachedStore?.url || '').trim().toLowerCase();
+
+  if (!state.analysisData || !cachedStore || !cachedUrl) return null;
+  if (currentUrl === cachedUrl || currentUrl.includes(cachedUrl) || cachedUrl.includes(currentUrl)) {
+    return { storeData: cachedStore, analysisData: state.analysisData };
+  }
+
+  return null;
+}
+
 // ── Message Handler ───────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Support both formats:
@@ -131,6 +149,7 @@ async function handleMessage(msg, sendResponse) {
         sendResponse({
           storeData: state.storeData,
           analysisData: state.analysisData,
+          scoutData: state.scoutData,
           creativesData: state.creativesData,
           history: history.slice(0, 10),
           pipelineRunning: state.pipelineRunning,
@@ -164,6 +183,17 @@ async function handleMessage(msg, sendResponse) {
           return;
         }
         const storeData = data.storeData || data;
+        const cached = await getCachedAnalysisForStore(storeData);
+        if (cached?.analysisData) {
+          sendResponse({
+            success: true,
+            analysisData: cached.analysisData,
+            gap_analysis: cached.analysisData,
+            scout_data: { competitors_found: cached.analysisData.competitors_analyzed?.length || 0, niche_summary: 'Using cached analysis for this store.' },
+            cached: true,
+          });
+          break;
+        }
         runAnalysisPipeline(storeData, sendResponse);
         break;
       }
@@ -197,6 +227,7 @@ async function handleMessage(msg, sendResponse) {
           await saveState({
             storeData: entry.storeData,
             analysisData: entry.analysisData,
+            scoutData: entry.scoutData || entry.analysisData?.competitor_data || null,
             creativesData: null,
             chatHistory: [],
           });
@@ -209,7 +240,7 @@ async function handleMessage(msg, sendResponse) {
 
       case 'CLEAR_CACHE': {
         await saveState({
-          storeData: null, analysisData: null, creativesData: null,
+          storeData: null, analysisData: null, scoutData: null, creativesData: null,
           chatHistory: [], pipelineRunning: false, pipelineStartedAt: null,
         });
         sendResponse({ success: true });
@@ -263,17 +294,21 @@ async function runAnalysisPipeline(storeData, sendResponse) {
     const analysisResult = await self.AnalystAgent.runAnalystAgent(storeData, scoutResult, broadcastProgress, memory);
     console.log(`[BG] Analysis complete. Score: ${analysisResult.overall_score}/100`);
 
+    const enrichedAnalysis = { ...analysisResult, competitor_data: scoutResult };
+
     // Save results + history
-    await saveState({ storeData, analysisData: analysisResult, creativesData: null });
-    await saveToHistory(storeData, analysisResult);
+    await saveState({ storeData, analysisData: enrichedAnalysis, scoutData: scoutResult, creativesData: null });
+    await saveToHistory(storeData, enrichedAnalysis);
 
     broadcastProgress({ agent: 'Analyst', status: 'done', message: `Score: ${analysisResult.overall_score || 0}/100` });
 
     sendResponse({
       success: true,
-      analysisData: analysisResult,
-      gap_analysis: analysisResult,
+      analysisData: enrichedAnalysis,
+      gap_analysis: enrichedAnalysis,
       scout_data: { competitors_found: scoutResult.competitors?.length || 0, niche_summary: scoutResult.niche_summary },
+      scoutData: scoutResult,
+      competitor_data: scoutResult,
     });
 
   } catch (err) {

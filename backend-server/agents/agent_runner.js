@@ -131,7 +131,8 @@ async function _runWithModel({ name, systemPrompt, userPrompt, tools, toolHandle
 
   while (turn < maxTurns) {
     turn++;
-    console.log(`   [${name}] Turn ${turn}/${maxTurns}`);
+    const promptText = typeof currentPrompt === 'string' ? currentPrompt : JSON.stringify(currentPrompt);
+    console.log(`   [${name}] Turn ${turn}/${maxTurns} | model=${modelName} | promptChars=${promptText.length}`);
 
     const result = await sendWithRetry(chat, currentPrompt, modelIndex, { name });
     const response = result.response;
@@ -142,7 +143,7 @@ async function _runWithModel({ name, systemPrompt, userPrompt, tools, toolHandle
     if (!functionCalls || functionCalls.length === 0) {
       // No tool calls — agent is done. Extract final response.
       const text = response.text();
-      console.log(`   [${name}] ✅ Agent finished after ${turn} turn(s)`);
+      console.log(`   [${name}] ✅ Agent finished after ${turn} turn(s) | responseChars=${text.length}`);
 
       // Try to parse as JSON
       try {
@@ -168,7 +169,7 @@ async function _runWithModel({ name, systemPrompt, userPrompt, tools, toolHandle
         continue;
       }
 
-      console.log(`   [${name}] 🔧 Calling tool: ${call.name}(${JSON.stringify(call.args).substring(0, 120)}...)`);
+      console.log(`   [${name}] 🔧 Calling tool: ${call.name} | args=${JSON.stringify(call.args).substring(0, 180)}`);
 
       try {
         const toolOutput = await handler(call.args);
@@ -195,6 +196,7 @@ async function _runWithModel({ name, systemPrompt, userPrompt, tools, toolHandle
 
   // Max turns exceeded — force a final response
   console.warn(`   [${name}] ⚠️ Max turns (${maxTurns}) reached. Forcing final response.`);
+  console.log(`   [${name}] 🧠 Final turn forced after maxTurns=${maxTurns}`);
   const finalResult = await sendWithRetry(
     chat,
     'You have used all available turns. Provide your final structured JSON response NOW.',
