@@ -250,7 +250,7 @@
     const host = window.location.hostname;
     const path = window.location.pathname;
     if (host.includes('admin.shopify.com') || path.startsWith('/admin')) {
-      throw new Error('ADMIN_PORTAL');
+      return null;
     }
 
     const platform = detectPlatform();
@@ -291,6 +291,7 @@
   (async () => {
     try {
       const data = await extractAllData();
+      if (!data) return; // Silent abort on admin portals
 
       // Only send if we detected actual products
       if (data.products.length > 0) {
@@ -308,7 +309,10 @@
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message.type === 'EXTRACT_STORE_DATA') {
       extractAllData()
-        .then(data => sendResponse({ success: true, data }))
+        .then(data => {
+          if (!data) sendResponse({ success: false, error: 'ADMIN_PORTAL' });
+          else sendResponse({ success: true, data });
+        })
         .catch(err => sendResponse({ success: false, error: err.message }));
       return true; // Keep channel open for async response
     }
