@@ -114,7 +114,7 @@
     show($('#xraySection'));
     show($('#actionsSection'));
 
-    $('#storeName').textContent = data.storeName || data.name || 'Unknown Store';
+    $('#storeName').textContent = data.storeName || data.store_name || data.name || 'Unknown Store';
     $('#platformBadge').textContent = data.platform || 'Unknown';
     $('#productsCount').textContent = data.productsCount ?? data.products?.length ?? '—';
 
@@ -220,6 +220,47 @@
   }
 
   // ——————————————————————————————————————————————————————————
+  // Dashboard — Competitor Cards
+  // ——————————————————————————————————————————————————————————
+  function populateCompetitors(competitorData) {
+    const section = $('#competitorsSection');
+    const list = $('#competitorsList');
+    if (!section || !list) return;
+
+    const competitors = competitorData?.competitors || competitorData?.data?.competitors || [];
+
+    if (!competitors.length) {
+      list.innerHTML = '<div class="sp-empty-sm"><p>No competitor data fetched yet.</p></div>';
+      hide(section);
+      return;
+    }
+
+    show(section);
+    list.innerHTML = '';
+
+    competitors.forEach(comp => {
+      const card = document.createElement('div');
+      card.className = 'sp-competitor-card';
+      const name = comp.name || comp.title || comp.store_name || 'Unknown competitor';
+      const platform = comp.platform || 'unknown';
+      const productCount = comp.product_count ?? comp.products?.length ?? 0;
+      const productNames = (comp.products || []).slice(0, 3).map(p => p.name || '').filter(Boolean);
+      const productText = productNames.length ? productNames.join(', ') : 'No product snapshot yet';
+      const urlText = comp.url ? `<div class="sp-competitor-meta">${esc(comp.url)}</div>` : '';
+
+      card.innerHTML = `
+        <div class="sp-competitor-head">
+          <div class="sp-competitor-name">${esc(name)}</div>
+          <span class="sp-competitor-platform">${esc(platform)}</span>
+        </div>
+        <div class="sp-competitor-meta">${productCount} product${productCount === 1 ? '' : 's'} fetched</div>
+        ${urlText}
+        <div class="sp-competitor-products">${esc(productText)}</div>`;
+      list.appendChild(card);
+    });
+  }
+
+  // ——————————————————————————————————————————————————————————
   // Dashboard — History
   // ——————————————————————————————————————————————————————————
   function populateHistory(historyData) {
@@ -239,8 +280,8 @@
       const date = item.date ? new Date(item.date).toLocaleDateString() : '';
       card.innerHTML = `
         <div class="sp-history-score">${esc(score)}</div>
-        <div class="sp-history-info">
-          <div class="sp-history-name">${esc(item.storeName || item.name || 'Unknown')}</div>
+        <div class="sp-history-meta">
+          <div class="sp-history-name">${esc(item.storeName || item.store_name || item.name || 'Unknown')}</div>
           <div class="sp-history-date">${esc(date)}</div>
         </div>`;
       card.addEventListener('click', () => loadHistoryItem(item));
@@ -389,6 +430,7 @@
 
       if (result?.analysisData) {
         populateRadar(result.analysisData);
+        populateCompetitors(result.analysisData?.competitor_data || result.scoutData || result.competitor_data || result.scout_data || null);
         show($('#xraySection'));
         show($('#actionsSection'));
       }

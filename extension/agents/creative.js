@@ -2,8 +2,20 @@
  * PRYZM Creative Agent (Browser Edition)
  * ========================================
  * Generates ready-to-use ad creatives based on gap analysis.
+ * Includes output guardrails for safe, compliant content.
  * Runs entirely in the extension.
  */
+
+// ─── Output Safety Guardrail ─────────────────────────────────────
+const BLOCKED_PATTERNS = /\b(scam|fake|illegal|steal|hack|kill|die|hate|racist|sexist|lawsuit|guaranteed\s+cure|100%\s+guaranteed|lose\s+\d+\s+pounds|get\s+rich\s+quick)\b/gi;
+const MEDICAL_CLAIMS = /\b(cure|treat|diagnose|prevent\s+disease|FDA\s+approved|clinically\s+proven)\b/gi;
+
+function sanitizeCreativeOutput(text) {
+  if (!text || typeof text !== 'string') return text;
+  let cleaned = text.replace(BLOCKED_PATTERNS, '[filtered]');
+  cleaned = cleaned.replace(MEDICAL_CLAIMS, '[claim removed]');
+  return cleaned;
+}
 
 async function generateAdScript({ platform, product_name, gap_to_exploit, target_emotion }) {
   const guides = {
@@ -11,7 +23,7 @@ async function generateAdScript({ platform, product_name, gap_to_exploit, target
     meta: { format: 'Meta Ad Copy', guidelines: '125 char primary. 40 char headline. Emojis sparingly. Hashtags.', tone: 'Professional, punchy', max_words: 100 },
     email: { format: 'Email Subject + Body', guidelines: 'Subject <50 chars. Problem→agitation→solution. 3-5 paragraphs.', tone: 'Personal, urgent', max_words: 200 }
   };
-  return { ...(guides[platform.toLowerCase()] || guides.meta), context: { product: product_name, gap: gap_to_exploit, emotion: target_emotion } };
+  return { ...(guides[platform.toLowerCase()] || guides.meta), context: { product: sanitizeCreativeOutput(product_name), gap: sanitizeCreativeOutput(gap_to_exploit), emotion: target_emotion } };
 }
 
 async function analyzeHook({ hook_text }) {

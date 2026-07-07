@@ -263,6 +263,9 @@ async function runAnalysisPipeline(storeData, sendResponse) {
     const analysisResult = await self.AnalystAgent.runAnalystAgent(storeData, scoutResult, broadcastProgress, memory);
     console.log(`[BG] Analysis complete. Score: ${analysisResult.overall_score}/100`);
 
+    // Attach competitor data for the UI
+    analysisResult.competitor_data = scoutResult.competitors;
+
     // Save results + history
     await saveState({ storeData, analysisData: analysisResult, creativesData: null });
     await saveToHistory(storeData, analysisResult);
@@ -273,7 +276,7 @@ async function runAnalysisPipeline(storeData, sendResponse) {
       success: true,
       analysisData: analysisResult,
       gap_analysis: analysisResult,
-      scout_data: { competitors_found: scoutResult.competitors?.length || 0, niche_summary: scoutResult.niche_summary },
+      scout_data: scoutResult,
     });
 
   } catch (err) {

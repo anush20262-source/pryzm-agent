@@ -1,13 +1,28 @@
 /**
- * PRYZM Content Script — E-Commerce Data Extractor
+ * PRYZM Content Script — E-Commerce Data Extractor v4
  * 
- * Runs on every page at document_idle. Extracts structured product data
- * from JSON-LD, Open Graph, meta tags, and DOM fallbacks. Detects
- * platform (Shopify, WooCommerce) and sends normalized data to background.js.
+ * Extracts product data from e-commerce stores using multiple strategies:
+ *   1. Shopify /products.json API (most reliable, gets ALL products)
+ *   2. JSON-LD structured data
+ *   3. Open Graph meta tags
+ *   4. DOM fallback (product cards + single product pages)
+ * 
+ * Detects platform (Shopify, WooCommerce) and sends normalized data to background.js.
  */
 
 (() => {
   'use strict';
+
+  // ─── Price Sanitizer ────────────────────────────────────────────
+  // Cleans raw price strings like "Rs. 1,189.00 Rs. 1,699.00" or "From $29.99"
+  function cleanPrice(raw) {
+    if (!raw || typeof raw !== 'string') return String(raw || '');
+    // Remove "From", "Sale", "Regular price", etc.
+    let cleaned = raw.replace(/\b(from|sale|regular\s*price|was|now|starting\s*at)\b/gi, '').trim();
+    // Extract the first price-like pattern (handles Rs., $, €, £, ₹)
+    const match = cleaned.match(/[₹$€£]?\s?[\d,]+\.?\d*/);
+    return match ? match[0].trim() : cleaned.split(/\s{2,}/)[0]?.trim() || raw.trim();
+  }
 
   // ─── Platform Detection ───────────────────────────────────────────
   function detectPlatform() {
@@ -34,7 +49,30 @@
     return 'unknown';
   }
 
-  // ─── JSON-LD Extraction (most reliable) ───────────────────────────
+  // ─── Shopify /products.json Extraction (BEST method) ──────────────
+  async function extractShopifyApi() {
+    try {
+      const resp = await fetch(window.location.origin + '/products.json?limit=50', {
+        headers: { 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!resp.ok) return [];
+
+      const json = await resp.json();
+      const raw = json.products || [];
+
+      return raw.slice(0, 20).map(p => ({
+        name: p.title || '',
+        price: cleanPrice(String(p.variants?.[0]?.price || '')),
+        description: (p.body_html || '').replace(/<[^>]*>/g, '').substring(0, 500),
+        image: p.images?.[0]?.src || '',
+      })).filter(p => p.name && p.name.length > 2);
+    } catch {
+      return [];
+    }
+  }
+
+  // ─── JSON-LD Extraction (most reliable DOM method) ─────────────────
   function extractJsonLd() {
     const products = [];
     const scripts = document.querySelectorAll('script[type="application/ld+json"]');
@@ -48,51 +86,49 @@
           data = data['@graph'];
         }
 
-        // Normalize to array for uniform processing
+        // Normalize to array
         const items = Array.isArray(data) ? data : [data];
 
         for (const item of items) {
-          if (item['@type'] === 'Product' || item['@type']?.includes?.('Product')) {
-            const price = item.offers?.price
-              || item.offers?.lowPrice
-              || item.offers?.[0]?.price
-              || '';
-
+          const type = item['@type'];
+          if (
+            type === 'Product' ||
+            (Array.isArray(type) && type.includes('Product'))
+          ) {
+            const offers = item.offers;
+            const price = String(
+              offers?.price ?? offers?.lowPrice ?? offers?.[0]?.price ?? ''
+            );
+            const img = item.image;
             products.push({
               name: item.name || '',
-              price: String(price),
-              description: item.description || '',
-              image: Array.isArray(item.image) ? item.image[0] : (item.image || ''),
+              price: cleanPrice(price),
+              description: (item.description || '').substring(0, 500),
+              image: Array.isArray(img) ? img[0] : (typeof img === 'object' ? img?.url || '' : img || ''),
             });
           }
         }
-      } catch (e) {
-        // Silently skip malformed JSON-LD blocks
+      } catch {
+        // Malformed JSON-LD — skip
       }
     }
 
     return products;
   }
 
-  // ─── Open Graph Meta Tags ─────────────────────────────────────────
+  // ─── Open Graph Meta Tag Extraction ───────────────────────────────
   function extractOpenGraph() {
     const get = (prop) =>
       document.querySelector(`meta[property="${prop}"]`)?.content || '';
 
     const title = get('og:title');
-    const description = get('og:description');
     const price = get('og:price:amount') || get('product:price:amount');
+    const desc = get('og:description');
     const image = get('og:image');
 
-    if (title || price) {
-      return [{
-        name: title,
-        price: price,
-        description: description,
-        image: image,
-      }];
+    if (title && price) {
+      return [{ name: title, price: cleanPrice(price), description: desc, image }];
     }
-
     return [];
   }
 
@@ -100,12 +136,14 @@
   function extractFromDom() {
     const products = [];
 
-    // 1. Try to find product grids/cards (Homepage / Collection pages)
+    // 1. Try to find product cards (Homepage / Collection pages)
+    // Use specific e-commerce selectors, avoid generic ones like .grid__item
     const cardSelectors = [
-      '.product-card', '.grid-product', '.product-item', 'li.product', 
-      '.card-wrapper', '.product-block', '.product__card', '.grid__item'
+      '.product-card', '.grid-product', '.product-item', 'li.product',
+      '.card-wrapper', '.product-block', '.product__card',
+      '[data-product-card]', '.collection-product-card',
     ];
-    
+
     let cards = [];
     for (const sel of cardSelectors) {
       cards = Array.from(document.querySelectorAll(sel));
@@ -113,32 +151,37 @@
     }
 
     if (cards.length > 0) {
-      for (const card of cards.slice(0, 10)) { // limit to 10
-        const nameEl = card.querySelector('h2, h3, h4, .title, .product-card__title, .card__heading, .full-unstyled-link');
-        const priceEl = card.querySelector('.price, .money, [data-price], .product-price, .price-item');
+      for (const card of cards.slice(0, 15)) {
+        const nameEl = card.querySelector(
+          'h2, h3, h4, .title, .product-card__title, .card__heading, ' +
+          '.product-card__name, .product-title, a.product-link'
+        );
+        const priceEl = card.querySelector(
+          '.price .money, .price-item, .product-price, .money, [data-price]'
+        );
         const imgEl = card.querySelector('img');
 
         const name = nameEl?.textContent?.trim() || '';
         const price = priceEl?.dataset?.price || priceEl?.textContent?.trim() || '';
         const image = imgEl?.src || imgEl?.dataset?.src || '';
 
-        if (name && price && name.length > 2) {
-          products.push({ name, price, description: '', image });
+        if (name && price && name.length > 2 && !/^(sale|new|featured|trending)$/i.test(name)) {
+          products.push({ name, price: cleanPrice(price), description: '', image });
         }
       }
     }
 
-    // 2. If no cards found (or we found nothing valid), try the Single Product Page fallback
+    // 2. Single Product Page fallback
     if (products.length === 0) {
       const h1 = document.querySelector('h1');
       const name = h1?.textContent?.trim() || '';
-  
+
       const priceSelectors = [
         '.price .money', '.product-price .money', '.price-item--regular',
         '[data-price]', '.product-price', '.price', '.woocommerce-Price-amount',
         '.current-price', '#product-price', '.product__price',
       ];
-  
+
       let price = '';
       for (const sel of priceSelectors) {
         const el = document.querySelector(sel);
@@ -147,17 +190,23 @@
           if (price) break;
         }
       }
-      
+
       let description = '';
-      const descEl = document.querySelector('.product-description, #product-description, .product__description, .woocommerce-product-details__short-description');
+      const descEl = document.querySelector(
+        '.product-description, #product-description, .product__description, ' +
+        '.woocommerce-product-details__short-description'
+      );
       if (descEl) description = descEl.textContent?.trim().substring(0, 500) || '';
 
       let image = '';
-      const imgEl = document.querySelector('.product-featured-image img, .product__media img, .woocommerce-product-gallery img, #product-image img');
+      const imgEl = document.querySelector(
+        '.product-featured-image img, .product__media img, ' +
+        '.woocommerce-product-gallery img, #product-image img'
+      );
       if (imgEl) image = imgEl.src || '';
 
       if (name && price && name.length > 2) {
-        products.push({ name, price, description, image });
+        products.push({ name, price: cleanPrice(price), description, image });
       }
     }
 
@@ -182,71 +231,85 @@
 
   // ─── Store Name Detection ─────────────────────────────────────────
   function detectStoreName() {
-    // Try meta application-name first
     const appName =
       document.querySelector('meta[name="application-name"]')?.content;
     if (appName) return appName;
 
-    // Try og:site_name
     const siteName =
       document.querySelector('meta[property="og:site_name"]')?.content;
     if (siteName) return siteName;
 
-    // Fall back to page title (strip common suffixes)
     const title = document.title || '';
     const cleaned = title.split(/[–—|·]/)[0]?.trim();
     return cleaned || new URL(window.location.href).hostname;
   }
 
   // ─── Master Extraction Pipeline ───────────────────────────────────
-  function extractAllData() {
+  async function extractAllData() {
     // 1. Block execution on Admin portals
     const host = window.location.hostname;
     const path = window.location.pathname;
-    if (host.includes('admin.shopify.com') || path.includes('/wp-admin')) {
+    if (host.includes('admin.shopify.com') || path.startsWith('/admin')) {
       throw new Error('ADMIN_PORTAL');
     }
 
-    // 2. Merge products from all sources, prioritizing JSON-LD
-    let products = extractJsonLd();
+    const platform = detectPlatform();
+
+    // 2. For Shopify: try the /products.json API first (gets ALL products)
+    let products = [];
+    if (platform === 'shopify') {
+      products = await extractShopifyApi();
+    }
+
+    // 3. Fallback chain: JSON-LD → OpenGraph → DOM
+    if (products.length === 0) products = extractJsonLd();
     if (products.length === 0) products = extractOpenGraph();
     if (products.length === 0) products = extractFromDom();
 
-    const normalizedData = {
+    // 4. Compute price range
+    const prices = products
+      .map(p => parseFloat(String(p.price).replace(/[^0-9.]/g, '')))
+      .filter(n => !isNaN(n) && n > 0);
+    const minPrice = prices.length ? Math.min(...prices) : null;
+    const maxPrice = prices.length ? Math.max(...prices) : null;
+
+    return {
       store_name: detectStoreName(),
-      platform: detectPlatform(),
+      storeName: detectStoreName(),
+      platform,
       url: window.location.href,
       products,
+      productsCount: products.length,
+      minPrice,
+      maxPrice,
+      priceRange: minPrice != null ? `${cleanPrice(products[0]?.price).charAt(0) === '₹' ? '₹' : '$'}${minPrice} – ${cleanPrice(products[0]?.price).charAt(0) === '₹' ? '₹' : '$'}${maxPrice}` : null,
       niche_signals: extractNicheSignals(),
     };
-
-    return normalizedData;
   }
 
   // ─── Auto-Extract & Send on Page Load ─────────────────────────────
-  try {
-    const data = extractAllData();
+  (async () => {
+    try {
+      const data = await extractAllData();
 
-    // Only send if we detected something meaningful
-    if (data.store_name || data.products.length > 0) {
-      chrome.runtime.sendMessage({
-        type: 'STORE_DATA_EXTRACTED',
-        data,
-      });
+      // Only send if we detected actual products
+      if (data.products.length > 0) {
+        chrome.runtime.sendMessage({
+          type: 'STORE_DATA_EXTRACTED',
+          data,
+        });
+      }
+    } catch (err) {
+      console.warn('[PRYZM] Auto-extraction failed:', err.message);
     }
-  } catch (err) {
-    console.warn('[PRYZM] Auto-extraction failed:', err.message);
-  }
+  })();
 
   // ─── Listen for Manual Extraction Requests ────────────────────────
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message.type === 'EXTRACT_STORE_DATA') {
-      try {
-        const data = extractAllData();
-        sendResponse({ success: true, data });
-      } catch (err) {
-        sendResponse({ success: false, error: err.message });
-      }
+      extractAllData()
+        .then(data => sendResponse({ success: true, data }))
+        .catch(err => sendResponse({ success: false, error: err.message }));
       return true; // Keep channel open for async response
     }
   });

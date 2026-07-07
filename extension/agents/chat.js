@@ -1,9 +1,28 @@
 /**
- * PRYZM Chat Agent (NEW)
- * ========================
- * Conversational AI that knows Richard's store inside out.
- * Answers questions, gives advice, generates content — all with context.
+ * PRYZM Chat Agent (v2 — with Security Guardrails)
+ * ==================================================
+ * Conversational AI with full store context.
+ * Includes prompt injection protection and output safety filters.
  */
+
+// ─── Security: Prompt Injection Protection ──────────────────────
+function sanitizeInput(text) {
+  if (!text || typeof text !== 'string') return '';
+  // Strip common prompt injection patterns
+  return text
+    .replace(/\b(ignore\s+(all\s+)?(previous|above|prior)\s+(instructions?|prompts?|rules?))\b/gi, '[blocked]')
+    .replace(/\b(system\s*prompt|you\s+are\s+now|act\s+as\s+if|pretend\s+to\s+be|reveal\s+your)\b/gi, '[blocked]')
+    .replace(/```[\s\S]*?```/g, '[code removed]')  // Strip code blocks that could contain injections
+    .trim();
+}
+
+// ─── Security: Output Safety Filter ─────────────────────────────
+function sanitizeOutput(text) {
+  if (!text || typeof text !== 'string') return text;
+  return text
+    .replace(/\b(scam|hack|steal|illegal|exploit\s+vulnerability)\b/gi, '[filtered]')
+    .replace(/\b(guaranteed\s+cure|100%\s+guaranteed|get\s+rich\s+quick)\b/gi, '[filtered]');
+}
 
 const CHAT_SYSTEM = `You are PRYZM Assistant — an AI e-commerce advisor.
 
@@ -81,6 +100,9 @@ async function runChatAgent(userMessage, storeData, analysisData, creativesData,
   const apiKey = await self.GeminiAgent.getApiKey();
   if (!apiKey) throw new Error('No API key. Set it up in Settings.');
 
+  // Sanitize user input against prompt injection
+  const safeMessage = sanitizeInput(userMessage);
+
   const context = buildContext(storeData, analysisData, creativesData);
   const systemPrompt = CHAT_SYSTEM + '\n\n--- CONTEXT ---' + context;
 
@@ -97,13 +119,16 @@ async function runChatAgent(userMessage, storeData, analysisData, creativesData,
   }
 
   // Add current message
-  contents.push({ role: 'user', parts: [{ text: userMessage }] });
+  contents.push({ role: 'user', parts: [{ text: safeMessage }] });
 
   const result = await self.GeminiAgent.callGemini(
     apiKey, 'gemini-2.0-flash', contents, null, systemPrompt
   );
 
-  const responseText = result.candidates?.[0]?.content?.parts?.find(p => p.text)?.text || 'Sorry, I couldn\'t generate a response. Please try again.';
+  const rawResponse = result.candidates?.[0]?.content?.parts?.find(p => p.text)?.text || 'Sorry, I couldn\'t generate a response. Please try again.';
+
+  // Sanitize output before returning to user
+  const responseText = sanitizeOutput(rawResponse);
 
   return responseText;
 }

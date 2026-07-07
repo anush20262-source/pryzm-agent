@@ -14,56 +14,52 @@ E-commerce store owners drown in "marketing spaghetti" — manually guessing wha
 
 ---
 
-## 🏗️ Architecture
+## 🏗️ Architecture (v4)
 
 ```
-┌──────────────────────────────────────────────────────┐
-│                  Chrome Extension (MV3)               │
-│                                                       │
-│  content.js ──→ background.js ──→ popup.html/js/css  │
-│  (LISTEN)       (ORCHESTRATE)     (DISPLAY)           │
-└────────────────────┬─────────────────────────────────┘
-                     │ POST /api/analyze
-                     │ POST /api/generate-creative
-                     ▼
-┌──────────────────────────────────────────────────────┐
-│               Backend Server (Express.js)             │
-│                                                       │
-│  server.js ──→ scraper.js ──→ ai_engine.js           │
-│  (ROUTES)      (SPY Agent)    (PRESCRIBE Agent)       │
-│                     │              │                   │
-│                     ▼              ▼                   │
-│              Firecrawl API    Gemini 2.0 Flash         │
-└──────────────────────────────────────────────────────┘
-                     │
-                     ▼
-┌──────────────────────────────────────────────────────┐
-│             MCP Server (Model Context Protocol)       │
-│                                                       │
-│  Tool: scrape_competitor_data                         │
-│  Wraps Firecrawl in MCP for interoperability          │
-└──────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────┐
+│                        Chrome Extension (MV3)                          │
+│                                                                        │
+│  [UI]          [CONTENT SCRIPT]      [BACKGROUND SERVICE WORKER]       │
+│  sidepanel ──→ content.js      ──→   background.js (Orchestrator)      │
+│  (Chat,        (Scrapes Store)       │   │   │   │   │                 │
+│   Dash)                              ▼   ▼   ▼   ▼   ▼                 │
+│                                  ┌──────────────────────────────────┐  │
+│                                  │        Agent Swarm               │  │
+│                                  │ - GeminiAgent (LLM wrapper)      │  │
+│                                  │ - ScoutAgent (Spy/Search)        │  │
+│                                  │ - AnalystAgent (Gap Analysis)    │  │
+│                                  │ - CreativeAgent (Copywriting)    │  │
+│                                  │ - ChatAgent (Store-aware Chat)   │  │
+│                                  └───────┬────────────┬─────────────┘  │
+└──────────────────────────────────────────┼────────────┼────────────────┘
+                                           ▼            ▼
+                             ┌───────────────┐ ┌────────────────────────┐
+                             │ Gemini API    │ │ MCP Server (stdio)     │
+                             │ (2.0 Flash)   │ │ Tool: scrape_competitor│
+                             └───────────────┘ │ (Wraps Firecrawl SDK)  │
+                                               └────────────────────────┘
 ```
 
-### The Agent Lifecycle: Listen → Spy → Prescribe
+### The Agent Lifecycle: Listen → Spy → Prescribe → Defend
 
 | Phase | Agent | What It Does |
 |-------|-------|-------------|
-| 🎧 **LISTEN** | Store Extraction | Silently reads the merchant's dashboard to extract products, pricing, niche signals |
-| 🕵️ **SPY** | Competitor Research | Scrapes competitor websites and ad copy using Firecrawl |
-| 📋 **PRESCRIBE** | Gap Analysis + Creative Gen | Compares data across 4 dimensions, generates actionable scripts |
+| 🎧 **LISTEN** | Content Script | Silently reads the merchant's dashboard to extract products (JSON-LD, DOM) |
+| 🕵️ **SPY** | Scout Agent | Finds competitors and scrapes web data (via MCP or Cheerio fallback) |
+| 📋 **PRESCRIBE**| Analyst/Creative | Compares 4 dimensions, generates marketing hooks |
+| 🛡️ **DEFEND** | Chat/Creative | Sanitizes outputs & blocks prompt injection (Security Guardrails) |
 
 ---
 
-## 📚 Course Concepts Demonstrated
+## 📚 Course Concepts Demonstrated (4/4 Completed)
 
 | Concept | Where | Day |
 |---------|-------|-----|
-| **MCP Server** | `mcp-server/` — wraps scraping in Model Context Protocol | Day 2 |
-| **Agent Skills** | `skills/` — SKILL.md files for extraction, analysis, creative gen | Day 3 |
-| **Human-in-the-Loop** | Extension UI — Review & Approve before any content goes live | Day 4 |
-| **Multi-Agent Pipeline** | Listen → Spy → Prescribe orchestration in background.js | Day 3 |
-| **Gemini API + ADK** | `ai_engine.js` — structured JSON output via Gemini 2.0 Flash | Day 1 |
+| **Multi-Agent Pipeline** | `background.js` → Swarm (Scout, Analyst, Creative, Chat) | Day 3 |
+| **MCP Server** | `mcp-server/index.js` → wraps Firecrawl in Model Context Protocol | Day 2 |
+| **Agent Skills** | `agents/analyst.js`, `creative.js` → Local heuristic + LLM tool calling | Day 3 |
+| **Security Guardrails** | `agents/chat.js` & `creative.js` → Prompt injection & output filtering | Day 4 |
 
 ---
 
@@ -120,13 +116,13 @@ node index.js
 
 ```
 pryzm/
-├── extension/                 # Chrome Extension (Manifest V3)
+├── extension/                 # Chrome Extension (MV3)
 │   ├── manifest.json          # Extension configuration
 │   ├── content.js             # 🎧 LISTEN — Store data extraction
-│   ├── background.js          # 🧠 Orchestrator — Pipeline management
-│   ├── popup.html             # Dashboard layout
-│   ├── popup.css              # Premium dark industrial theme
-│   ├── popup.js               # UI logic & view management
+│   ├── background.js          # 🕵️ Orchestrator — Pipeline management
+│   ├── sidepanel.html         # Dashboard layout
+│   ├── sidepanel.css          # Premium dark industrial theme
+│   ├── sidepanel.js           # UI logic & view management
 │   └── icons/                 # Extension icons
 │
 ├── backend-server/            # Node.js API Server

@@ -669,6 +669,50 @@ html, body {
 }
 
 /* ======================================================
+   COMPETITOR CARDS
+   ====================================================== */
+.sp-competitors-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sp-competitor-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px;
+}
+.sp-competitor-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.sp-competitor-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.sp-competitor-platform {
+  padding: 2px 7px;
+  border-radius: var(--radius-pill, 20px);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: rgba(139, 92, 246, 0.10);
+  color: var(--purple-light, #a78bfa);
+}
+.sp-competitor-meta,
+.sp-competitor-products,
+.sp-competitor-positioning {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  margin-top: 4px;
+}
+
+/* ======================================================
    HISTORY
    ====================================================== */
 .sp-history-list {
