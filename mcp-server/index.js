@@ -95,6 +95,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 
   try {
+    console.error(`[MCP] Tool call received: ${name} | domain=${args.domain} | niche=${args.niche || ''}`);
     const result = await scrapeCompetitorData(args.domain, args.niche || '');
     return {
       content: [
@@ -130,22 +131,25 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function scrapeCompetitorData(domain, niche) {
   // Ensure domain has a protocol
   const url = domain.startsWith('http') ? domain : `https://${domain}`;
+  console.error(`[MCP] Scrape started for ${url}`);
   const firecrawl = await getFirecrawl();
 
   if (!firecrawl) {
     // ── Cheerio fallback ──
-    console.error('[MCP] No Firecrawl key — using cheerio fallback for:', url);
+    console.error(`[MCP] No Firecrawl key — using cheerio fallback for ${url}`);
     return cheerioScrape(url, domain, niche);
   }
 
   // ── Live Firecrawl scraping ──
   try {
+    console.error(`[MCP] Using Firecrawl for ${url}`);
     const scrapeResult = await firecrawl.scrapeUrl(url, {
       formats: ['markdown'],
     });
 
     const pageContent = scrapeResult.markdown || scrapeResult.content || '';
     const metadata = scrapeResult.metadata || {};
+    console.error(`[MCP] Firecrawl finished for ${url} | contentChars=${pageContent.length}`);
 
     return {
       mode: 'firecrawl',
@@ -187,6 +191,7 @@ async function cheerioScrape(url, domain, niche) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout
 
+  console.error(`[MCP] Cheerio fetch started for ${url}`);
   const response = await fetch(url, {
     headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -197,6 +202,7 @@ async function cheerioScrape(url, domain, niche) {
   clearTimeout(timeout);
 
   const html = await response.text();
+  console.error(`[MCP] Cheerio fetch finished for ${url} | htmlBytes=${html.length}`);
   const $ = cheerio.load(html);
 
   // ── Extract products via JSON-LD ──

@@ -55,7 +55,7 @@ function buildContext(storeData, analysisData, creativesData) {
 - Name: ${storeData.store_name || 'Unknown'}
 - Platform: ${storeData.platform || 'unknown'}
 - URL: ${storeData.url || 'unknown'}
-- Products: ${(storeData.products || []).map(p => `${p.name} ($${p.price})`).join(', ') || 'None detected'}
+- Products: ${(storeData.products || []).slice(0, 3).map(p => `${p.name} ($${p.price})`).join(', ') || 'None detected'}
 - Keywords: ${storeData.niche_signals?.keywords?.join(', ') || 'none'}
 - Meta Description: ${storeData.niche_signals?.meta_description || 'none'}
 `;
@@ -109,8 +109,8 @@ async function runChatAgent(userMessage, storeData, analysisData, creativesData,
   // Build conversation history for multi-turn
   const contents = [];
 
-  // Include last 6 messages of history for continuity
-  const recentHistory = (chatHistory || []).slice(-6);
+  // Include last 3 messages of history for continuity
+  const recentHistory = (chatHistory || []).slice(-3);
   for (const msg of recentHistory) {
     contents.push({
       role: msg.role === 'user' ? 'user' : 'model',

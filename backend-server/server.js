@@ -35,7 +35,19 @@ app.use(express.json({ limit: '10mb' }));
 
 // Request logger
 app.use((req, _res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  const reqId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  req.pryzmReqId = reqId;
+  console.log(`[${new Date().toISOString()}] ${reqId} ${req.method} ${req.path}`);
+
+  if (req.body && typeof req.body === 'object') {
+    const bodySummary = req.body.store_name
+      ? `store=${req.body.store_name}`
+      : req.body.store?.store_name
+        ? `store=${req.body.store.store_name}`
+        : `keys=${Object.keys(req.body).slice(0, 8).join(',')}`;
+    console.log(`   [request] ${bodySummary}`);
+  }
+
   next();
 });
 
@@ -74,6 +86,7 @@ app.post('/api/analyze', async (req, res) => {
 
     console.log(`\n${'='.repeat(60)}`);
     console.log(`🔮 PRYZM ANALYSIS PIPELINE — "${storeData.store_name}"`);
+    console.log(`   [request] requestId=${req.pryzmReqId}`);
     console.log(`${'='.repeat(60)}`);
 
     // AGENT 1: Scout — Find and scrape competitors

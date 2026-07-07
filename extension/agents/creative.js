@@ -60,7 +60,7 @@ RULES: Each creative must exploit a real gap. Hooks <15 words. Reference actual 
 
 async function runCreativeAgent(gapAnalysis, storeData, onProgress) {
   const scorecard = gapAnalysis.gap_scorecard || {};
-  const gaps = Object.entries(scorecard).map(([k, v]) => ({ dim: k, ...v })).sort((a, b) => (a.score || 50) - (b.score || 50));
+  const gaps = Object.entries(scorecard).map(([k, v]) => ({ dim: k, ...v })).sort((a, b) => (a.score || 50) - (b.score || 50)).slice(0, 3);
 
   return await self.GeminiAgent.runAgent({
     name: 'Creative Director', systemPrompt: CREATIVE_SYSTEM,
@@ -71,7 +71,7 @@ Competitors: ${(gapAnalysis.competitors_analyzed || []).join(', ')}
 Use generate_ad_script for all 3 platforms.`,
     tools: CREATIVE_TOOLS,
     toolHandlers: { generate_ad_script: generateAdScript, analyze_hook: analyzeHook },
-    maxTurns: 8, onProgress
+    maxTurns: 4, onProgress
   });
 }
 
