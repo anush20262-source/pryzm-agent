@@ -62,17 +62,46 @@ async function runCreativeAgent(gapAnalysis, storeData, onProgress) {
   const scorecard = gapAnalysis.gap_scorecard || {};
   const gaps = Object.entries(scorecard).map(([k, v]) => ({ dim: k, ...v })).sort((a, b) => (a.score || 50) - (b.score || 50)).slice(0, 3);
 
-  return await self.GeminiAgent.runAgent({
-    name: 'Creative Director', systemPrompt: CREATIVE_SYSTEM,
-    userPrompt: `Generate creatives for "${storeData.store_name}". Products: ${JSON.stringify(storeData.products?.slice(0, 3))}.
+  try {
+    return await self.GeminiAgent.runAgent({
+      name: 'Creative Director', systemPrompt: CREATIVE_SYSTEM,
+      userPrompt: `Generate creatives for "${storeData.store_name}". Products: ${JSON.stringify(storeData.products?.slice(0, 3))}.
 GAP ANALYSIS (Score: ${gapAnalysis.overall_score}/100):
 ${gaps.map(g => `${g.dim}: Score ${g.score}, Severity: ${g.severity}. Gap: ${g.gap}`).join('\n')}
 Competitors: ${(gapAnalysis.competitors_analyzed || []).join(', ')}
 Use generate_ad_script for all 3 platforms.`,
-    tools: CREATIVE_TOOLS,
-    toolHandlers: { generate_ad_script: generateAdScript, analyze_hook: analyzeHook },
-    maxTurns: 4, onProgress
-  });
+      tools: CREATIVE_TOOLS,
+      toolHandlers: { generate_ad_script: generateAdScript, analyze_hook: analyzeHook },
+      maxTurns: 4, onProgress
+    });
+  } catch (err) {
+    if (err.rateLimited) {
+      console.warn('[CreativeAgent] API Quota exhausted. Using mock creative data for demo.');
+      return {
+        prescriptions: [
+          {
+            format: "TikTok/Reel Script",
+            hook_text: "[API Quota Exhausted - Demo Data] Stop buying generic products...",
+            body_creative: "Visual: Fast cuts showing premium materials compared to competitors. Voiceover: The gap in the market is clear. When you choose quality, you feel the difference immediately.",
+            cta: "Shop the ultimate collection today."
+          },
+          {
+            format: "Meta Ad Copy",
+            hook_text: "[API Quota Exhausted - Demo Data] Finally, products built for true quality.",
+            body_creative: "Our latest collection bridges the gap between style and absolute comfort, leaving competitors in the dust. Experience the difference.",
+            cta: "Grab yours before they sell out."
+          },
+          {
+            format: "Email Subject Line",
+            hook_text: "[API Quota Exhausted - Demo Data] The truth about your daily essentials...",
+            body_creative: "Most brands cut corners on materials. We don't. Here is why our store is rated #1 for quality and comfort.",
+            cta: "Read the breakdown"
+          }
+        ]
+      };
+    }
+    throw err;
+  }
 }
 
 self.CreativeAgent = { runCreativeAgent };
