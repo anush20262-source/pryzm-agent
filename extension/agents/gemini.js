@@ -16,8 +16,10 @@ const GEMINI_MODELS = ['gemini-2.0-flash-lite', 'gemini-2.0-flash'];
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 const API_TIMEOUT_MS = 60000;
 
-// Track which key index to use next (round-robin)
+// Track which key index to use next
 let currentKeyIndex = 0;
+// Track rate limited keys: Map<string, timestamp_to_unban>
+const exhaustedKeys = new Map();
 
 /**
  * Get all stored API keys (supports comma-separated multi-key)
@@ -33,14 +35,29 @@ async function getAllApiKeys() {
 }
 
 /**
- * Get the next API key (rotates if multiple keys exist)
+ * Get the next API key (rotates if multiple keys exist, skips rate-limited ones)
  */
 async function getApiKey() {
   const keys = await getAllApiKeys();
   if (keys.length === 0) return '';
   if (keys.length === 1) return keys[0];
-  // Round-robin rotation
-  const key = keys[currentKeyIndex % keys.length];
+  
+  // Filter out keys that are currently in their 60s cooldown
+  const now = Date.now();
+  const availableKeys = keys.filter(k => {
+    const unbanTime = exhaustedKeys.get(k);
+    if (!unbanTime) return true;
+    if (now > unbanTime) {
+      exhaustedKeys.delete(k); // Cooldown expired
+      return true;
+    }
+    return false;
+  });
+
+  // If all keys are rate-limited, fallback to round-robin on all keys and hope for the best
+  const pool = availableKeys.length > 0 ? availableKeys : keys;
+  
+  const key = pool[currentKeyIndex % pool.length];
   currentKeyIndex++;
   return key;
 }
@@ -100,10 +117,13 @@ async function callGemini(apiKey, model, contents, tools, systemInstruction, att
     clearTimeout(timeout);
 
     if (response.status === 429) {
+      // Mark this key as exhausted for 60 seconds
+      exhaustedKeys.set(apiKey, Date.now() + 60000);
+      
       if (attempt <= 3) {
         const newKey = await getApiKey();
-        const waitSec = Math.pow(2, attempt) * 2; // 4s, 8s, 16s
-        console.log(`[Gemini] Rate limited. Rotating key + waiting ${waitSec}s (attempt ${attempt}/3)...`);
+        const waitSec = Math.pow(2, attempt); // 2s, 4s, 8s (faster retries since we are rotating keys)
+        console.log(`[Gemini] Rate limited. Marked key exhausted, waiting ${waitSec}s (attempt ${attempt}/3)...`);
         await sleep(waitSec * 1000);
         return callGemini(newKey || apiKey, model, contents, tools, systemInstruction, attempt + 1);
       }

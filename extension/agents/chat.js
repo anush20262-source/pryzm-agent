@@ -121,9 +121,25 @@ async function runChatAgent(userMessage, storeData, analysisData, creativesData,
   // Add current message
   contents.push({ role: 'user', parts: [{ text: safeMessage }] });
 
-  const result = await self.GeminiAgent.callGemini(
-    apiKey, 'gemini-2.0-flash', contents, null, systemPrompt
-  );
+  // Use the same fallback models as runAgent to avoid rate limits
+  const GEMINI_MODELS = ['gemini-2.0-flash-lite', 'gemini-2.0-flash'];
+  let result;
+  
+  for (let mi = 0; mi < GEMINI_MODELS.length; mi++) {
+    const model = GEMINI_MODELS[mi];
+    try {
+      result = await self.GeminiAgent.callGemini(
+        apiKey, model, contents, null, systemPrompt
+      );
+      break; // Success
+    } catch (err) {
+      if (err.rateLimited && mi + 1 < GEMINI_MODELS.length) {
+        console.log(`[ChatAgent] Model ${model} rate limited. Trying ${GEMINI_MODELS[mi + 1]}...`);
+        continue;
+      }
+      throw err;
+    }
+  }
 
   const rawResponse = result.candidates?.[0]?.content?.parts?.find(p => p.text)?.text || 'Sorry, I couldn\'t generate a response. Please try again.';
 
